@@ -1,0 +1,23 @@
+[[tools]]
+match_extensions = [ ".toml" ]
+path = "tomllint"
+pattern = "^([^:]+):(\\d+):(\\d+):([^:]+):(.*)$"
+filename_match = 1
+line_match = 2
+description_match = 5
+
+[[tools]]
+match_extensions = [ ".c", ".h" ]
+path = "cc"
+pattern = "^([^:]+):(\\d+):(\\d+):([^:]+):(.*)$"
+filename_match = 1
+line_match = 2
+description_match = 5
+
+[[tools]]
+match_extensions = [ ".py" ]
+path = "mypy"
+pattern = "^([^:]+):(\\d+): error: (.*$"
+filename_match = 1
+line_match = 2
+description_match = 3

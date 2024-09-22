@@ -1,0 +1,3 @@
+#!/bin/bash
+
+tail -n 0 -f "$HOME"/.local/state/nvim/lsp.log "$(dirname "$0")"/lintlsp.log
