@@ -1,7 +1,0 @@
-#!/bin/bash
-
-# For local development, assuming you've cloned this into "$HOME"/src/lintlsp, do something like:
-# ln -s "$HOME"/src/lintlsp/lintlsp-debug-runner "$HOME"/.local/bin/lintlsp
-
-export RUST_BACKTRACE=1
-exec cargo run --quiet --manifest-path="$HOME"/src/lintlsp/Cargo.toml -- "$@" 2>>"$HOME"/src/lintlsp/lintlsp.log

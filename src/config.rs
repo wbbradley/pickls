@@ -2,7 +2,7 @@
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Default)]
-pub struct LintLspConfig {
+pub struct LintLsConfig {
     pub tools: Vec<LintTool>,
 }
 
@@ -16,6 +16,6 @@ pub struct LintTool {
     pub description_match: Option<usize>,
 }
 
-pub fn parse_config(content: &str) -> LintLspConfig {
+pub fn parse_config(content: &str) -> LintLsConfig {
     toml::from_str(content).expect("Failed to parse TOML configuration")
 }

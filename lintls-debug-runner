@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# For local development, assuming you've cloned this into "$HOME"/src/lintls, do something like:
+# ln -s "$HOME"/src/lintls/lintls-debug-runner "$HOME"/.local/bin/lintls
+
+export RUST_BACKTRACE=1
+exec cargo run --quiet --manifest-path="$HOME"/src/lintls/Cargo.toml -- "$@" 2>>"$HOME"/src/lintls/lintls.log
