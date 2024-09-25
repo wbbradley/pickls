@@ -2,20 +2,21 @@
 // src/main.rs
 
 use crate::config::{LintLsConfig, LintTool};
-use nix::unistd::setsid;
+use crate::error::Result;
+use nix::unistd::{getpid, setpgid};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs::read_to_string;
-use std::process::Stdio;
 use std::sync::Arc;
 use tokio::io;
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::Mutex;
-use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
-use tower_lsp::lsp_types::{Diagnostic as LspDiagnostic, DiagnosticSeverity, Position, Range};
+use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 mod config;
+mod error;
 
 pub struct LintLsDiagnostic {
     pub filename: String,
@@ -23,16 +24,16 @@ pub struct LintLsDiagnostic {
     pub description: Option<String>,
 }
 
-impl LintLsDiagnostic {
-    pub fn to_lsp_diagnostic(&self) -> LspDiagnostic {
-        LspDiagnostic {
+impl From<LintLsDiagnostic> for Diagnostic {
+    fn from(diagnostic: LintLsDiagnostic) -> Self {
+        Self {
             range: Range {
                 start: Position {
-                    line: self.line.saturating_sub(1),
+                    line: diagnostic.line.saturating_sub(1),
                     character: 0,
                 },
                 end: Position {
-                    line: self.line.saturating_sub(1),
+                    line: diagnostic.line.saturating_sub(1),
                     character: 0,
                 },
             },
@@ -40,7 +41,7 @@ impl LintLsDiagnostic {
             code: None,
             code_description: None,
             source: Some("lintls".to_string()),
-            message: self
+            message: diagnostic
                 .description
                 .clone()
                 .unwrap_or_else(|| "error".to_string()),
@@ -96,11 +97,22 @@ impl LintLsServer {
     }
 
     async fn run_diagnostics(&self, job_spec: JobSpec) {
-        let mut map = self.jobs.lock().await;
+        let mut jobs = self.jobs.lock().await;
         let job_id = JobId::from(&job_spec);
-        map.entry(job_id)
-            .and_modify(|_job| panic!())
-            .or_insert_with(|| panic!());
+        // HashMap<JobId, Job>
+        let tools = self.config.lock().await.tools.clone();
+        for tool in tools
+            .iter()
+            .filter(|t| t.match_extensions.contains(&format!(".{}", extension)))
+        {}
+
+        jobs.entry(job_id).or_insert_with(move || {
+            let pid = 0;
+            Job {
+                job_spec,
+                job_state: JobState::Running { pid },
+            }
+        });
         /*
                 let mut sample = job_spec.text.clone();
                 sample.truncate(100);
@@ -216,52 +228,58 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn _run_tool(tool: &LintTool, file_path: &str) -> Vec<LintLsDiagnostic> {
+async fn run_tool(client: &Client, tool: &LintTool, file_path: &str) -> Result<u32> {
+    // Result<Vec<LintLsDiagnostic>> {
     let mut cmd = Command::new(&tool.path);
-    cmd.arg(file_path).stdout(Stdio::piped());
 
-    _command_with_new_session(&mut cmd);
-
-    let output = cmd
-        .spawn()
-        .unwrap_or_else(|e| {
-            panic!(
-                "Failed to execute tool [tool.path={}, error={e:?}]",
-                tool.path
-            )
-        })
-        .wait_with_output()
-        .await
-        .unwrap_or_else(|e| {
-            panic!(
-                "Failed to read tool output [tool.path={}, error={e:?}]",
-                tool.path
-            )
-        });
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let re = Regex::new(&tool.pattern)
-        .unwrap_or_else(|e| panic!("Invalid regex '{}' [error={e:?}", tool.pattern));
-    stdout
-        .lines()
-        .filter_map(|line| {
-            re.captures(line).map(|caps| LintLsDiagnostic {
-                filename: caps.get(tool.filename_match).unwrap().as_str().to_string(),
-                line: caps.get(tool.line_match).unwrap().as_str().parse().unwrap(),
-                description: tool
-                    .description_match
-                    .map(|i| caps.get(i).unwrap().as_str().to_string()),
-            })
-        })
-        .collect()
-}
-
-/// Ensure that this process creates its own session and process subgroup so that we can kill the
-/// whole group.
-fn _command_with_new_session(cmd: &mut Command) -> &mut Command {
+    // Ensure that the child process creates its own process group so that we can kill the whole group.
     unsafe {
         cmd.pre_exec(|| {
-            setsid().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            setpgid(getpid(), getpid()).expect("Failed to set new process group");
             Ok(())
-        })
+        });
     }
+
+    let mut child = cmd
+        .arg("--with-stdin-path")
+        .arg(file_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()?;
+
+    let stdin: tokio::process::ChildStdin = child.stdin.take().expect("Failed to open stdin");
+    let stdout: tokio::process::ChildStdout = child.stdout.take().expect("Failed to open stdout");
+    let tool = tool.clone();
+    let client = client.clone();
+    tokio::spawn(async move { ingest_errors(client, tool, stdin, stdout).await.unwrap() });
+    Ok(child.id().unwrap())
+}
+
+async fn ingest_errors(
+    client: Client,
+    tool: LintTool,
+    mut stdin: tokio::process::ChildStdin,
+    stdout: tokio::process::ChildStdout,
+) -> Result<()> {
+    let re = Regex::new(&tool.pattern)
+        .unwrap_or_else(|e| panic!("Invalid regex [pattern={pattern}]", pattern = tool.pattern));
+    stdin.write_all(b"").await;
+    let mut reader = BufReader::new(stdout).lines();
+    while let Some(line) = reader.next_line().await? {
+        if let Some(diagnostic) = re.captures(line).map(|caps| LintLsDiagnostic {
+            filename: caps.get(tool.filename_match).unwrap().as_str().to_string(),
+            line: caps.get(tool.line_match).unwrap().as_str().parse().unwrap(),
+            description: tool
+                .description_match
+                .map(|i| caps.get(i).unwrap().as_str().to_string()),
+        }) {
+            let lsp_diagnostic: Diagnostic = diagnostic.into();
+
+            // Publish diagnostics to the client
+            client
+                .publish_diagnostics(uri.clone(), lsp_diagnostics, None)
+                .await;
+        }
+    }
+    Ok(())
 }
