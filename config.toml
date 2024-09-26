@@ -1,6 +1,6 @@
 [[tools]]
 match_extensions = [ ".toml" ]
-path = "tomllint"
+program = "tomllint"
 pattern = "^([^:]+):(\\d+):(\\d+):([^:]+):(.*)$"
 filename_match = 1
 line_match = 2
@@ -8,7 +8,7 @@ description_match = 5
 
 [[tools]]
 match_extensions = [ ".c", ".h" ]
-path = "cc"
+program = "cc"
 pattern = "^([^:]+):(\\d+):(\\d+):([^:]+):(.*)$"
 filename_match = 1
 line_match = 2
@@ -16,7 +16,7 @@ description_match = 5
 
 [[tools]]
 match_extensions = [ ".py" ]
-path = "mypy"
+program = "mypy"
 pattern = "^([^:]+):(\\d+): error: (.*$"
 filename_match = 1
 line_match = 2
