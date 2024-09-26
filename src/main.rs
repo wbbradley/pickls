@@ -5,10 +5,10 @@ use crate::prelude::*;
 mod config;
 mod diagnostic;
 mod error;
+mod job;
 mod prelude;
 mod tool;
 mod utils;
-    mod job;
 
 struct LintLsServer {
     client: Client,
@@ -28,35 +28,40 @@ impl LintLsServer {
     async fn run_diagnostics(&self, job_spec: JobSpec) -> Result<()> {
         let job_id = JobId::from(&job_spec);
         let mut jobs = self.jobs.lock().await;
-        if let Some(mut ref job) = jobs.get_mut(&job_id) {
+        if let Some(ref mut _job) = jobs.get_mut(&job_id) {
             panic!("TODO: Job for ({job_id}) already exists!")
         }
         // HashMap<JobId, Job>
         let tools = self.config.lock().await.tools.clone();
         let Some(extension) = get_extension_from_url(&job_spec.uri) else {
-            return;
+            return Err(Error::new(format!(
+                "failed to get extension from uri [uri={uri}]",
+                uri = job_spec.uri
+            )));
         };
+
         for tool in tools.iter().filter(|t| {
             t.match_extensions
                 .iter()
-                .any(|&match_extension| match_extension == extension)
+                .any(|match_extension| *match_extension == extension)
         }) {
+            let job_id = job_id.clone();
             let job_spec = job_spec.clone();
-            if 
-            jobs.entry(job_id).or_insert_with(async move {
-                let pid: JobPid = run_tool(client, tool, uri, version, file_path).await?;
-                Job {
-                    job_spec,
-                    job_state: JobState::Running { pid },
-                }
+            let pid: JobToolPid =
+                run_tool(&self.client, tool, job_spec.uri.clone(), job_spec.version).await?;
+            jobs.entry(job_id).or_insert_with(|| Job {
+                job_spec,
+                job_state: JobState::Running(pid),
             });
         }
+        Ok(())
     }
 }
+type TowerResult<T> = tower_lsp::jsonrpc::Result<T>;
 
 #[tower_lsp::async_trait]
 impl LanguageServer for LintLsServer {
-    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> TowerResult<InitializeResult> {
         log::info!(
             "initialize called [params={:?}, lintls_pid={}]",
             params,
@@ -92,31 +97,39 @@ impl LanguageServer for LintLsServer {
             .await;
     }
 
-    async fn shutdown(&self) -> Result<()> {
+    async fn shutdown(&self) -> TowerResult<()> {
         Ok(())
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         log::info!("[LintLsServer::did_open] called [params={params:?}]");
 
-        self.run_diagnostics(JobSpec {
-            uri: params.text_document.uri,
-            version: params.text_document.version,
-            language_id: Some(params.text_document.language_id),
-            text: params.text_document.text,
-        })
-        .await;
+        if let Err(error) = self
+            .run_diagnostics(JobSpec {
+                uri: params.text_document.uri,
+                version: params.text_document.version,
+                language_id: Some(params.text_document.language_id),
+                text: params.text_document.text,
+            })
+            .await
+        {
+            log::error!("did_open: error: {error:?}");
+        }
     }
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
         log::info!("[LintLsServer::did_change] called [params={params:?}]");
         assert!(params.content_changes.len() == 1);
-        self.run_diagnostics(JobSpec {
-            uri: params.text_document.uri,
-            version: params.text_document.version,
-            language_id: None,
-            text: params.content_changes.remove(0).text,
-        })
-        .await;
+        if let Err(error) = self
+            .run_diagnostics(JobSpec {
+                uri: params.text_document.uri,
+                version: params.text_document.version,
+                language_id: None,
+                text: params.content_changes.remove(0).text,
+            })
+            .await
+        {
+            log::error!("did_change: error: {error:?}");
+        }
     }
 
     // Implement other necessary methods like did_change or did_save if needed.
@@ -125,7 +138,13 @@ impl LanguageServer for LintLsServer {
 #[tokio::main]
 async fn main() -> Result<()> {
     simple_logging::log_to_file("lintls.log", log::LevelFilter::Trace).unwrap();
-
+    let parent_process_info = fetch_parent_process_info()
+        .await
+        .unwrap_or_else(|| "<unknown parent process>".to_string());
+    log::info!(
+        "lintls started; pid={pid}; parent_process_info={parent_process_info}",
+        pid = getpid()
+    );
     let config_content: Option<String> = read_to_string("config.toml").ok();
     let config =
         config_content.map_or_else(Default::default, |content| config::parse_config(&content));

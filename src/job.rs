@@ -19,19 +19,20 @@ impl From<&JobSpec> for JobId {
     }
 }
 
-enum JobState {
-    Running { pid: u32 },
+pub enum JobState {
+    Running(JobToolPid),
     Done,
 }
+
 #[derive(Clone)]
 pub struct JobSpec {
-    uri: Url,
-    version: i32,
-    language_id: Option<String>,
-    text: String,
+    pub uri: Url,
+    pub version: i32,
+    pub language_id: Option<String>,
+    pub text: String,
 }
 
 pub struct Job {
-    job_spec: JobSpec,
-    job_state: JobState,
+    pub job_spec: JobSpec,
+    pub job_state: JobState,
 }

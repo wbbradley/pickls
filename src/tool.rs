@@ -5,6 +5,7 @@ use crate::prelude::*;
 pub struct JobToolPid {
     /// A Process ID for the job.
     pid: u32,
+    join_handle: JoinHandle<()>,
 }
 
 pub async fn run_tool(
@@ -12,7 +13,6 @@ pub async fn run_tool(
     tool: &LintTool,
     uri: Url,
     version: i32,
-    file_path: &str,
 ) -> Result<JobToolPid> {
     // Result<Vec<LintLsDiagnostic>> {
     let mut cmd = Command::new(&tool.program);
@@ -26,8 +26,7 @@ pub async fn run_tool(
     }
 
     let mut child = cmd
-        .arg("--with-stdin-path")
-        .arg(file_path)
+        .arg(uri.to_string())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()?;
@@ -36,11 +35,14 @@ pub async fn run_tool(
     let stdout: tokio::process::ChildStdout = child.stdout.take().expect("Failed to open stdout");
     let tool = tool.clone();
     let client = client.clone();
-    tokio::spawn(async move {
-        ingest_errors(uri, version, client, tool, stdin, stdout).await;
+    let join_handle: JoinHandle<()> = tokio::spawn(async move {
+        if let Err(error) = ingest_errors(uri, version, client, tool, stdin, stdout).await {
+            log::error!("[run_tool/spawn-ingest] error: {error:?}");
+        }
     });
     Ok(JobToolPid {
         pid: child.id().unwrap(),
+        join_handle,
     })
 }
 
@@ -67,7 +69,7 @@ async fn ingest_errors(
             pattern = tool.pattern
         )
     })?;
-    stdin.write_all(b"").await;
+    stdin.write_all(b"").await?;
     let mut reader = BufReader::new(stdout).lines();
     let mut lsp_diagnostics: Vec<Diagnostic> = Default::default();
     while let Some(line) = reader.next_line().await? {
