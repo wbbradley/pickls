@@ -138,9 +138,7 @@ impl LanguageServer for LintLsServer {
 #[tokio::main]
 async fn main() -> Result<()> {
     simple_logging::log_to_file("lintls.log", log::LevelFilter::Trace).unwrap();
-    let parent_process_info = fetch_parent_process_info()
-        .await
-        .unwrap_or_else(|| "<unknown parent process>".to_string());
+    let parent_process_info = fetch_parent_process_info().await;
     log::info!(
         "lintls started; pid={pid}; parent_process_info={parent_process_info}",
         pid = getpid()
