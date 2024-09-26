@@ -61,12 +61,8 @@ type TowerResult<T> = tower_lsp::jsonrpc::Result<T>;
 
 #[tower_lsp::async_trait]
 impl LanguageServer for LintLsServer {
-    async fn initialize(&self, params: InitializeParams) -> TowerResult<InitializeResult> {
-        log::info!(
-            "initialize called [params={:?}, lintls_pid={}]",
-            params,
-            std::process::id()
-        );
+    async fn initialize(&self, _params: InitializeParams) -> TowerResult<InitializeResult> {
+        log::info!("initialize called [lintls_pid={}]", std::process::id());
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -92,17 +88,29 @@ impl LanguageServer for LintLsServer {
     }
 
     async fn initialized(&self, _: InitializedParams) {
+        log::info!("[initialized] called");
         self.client
             .log_message(MessageType::INFO, "lintls Server initialized")
             .await;
     }
 
+    async fn did_change_configuration(&self, dccp: DidChangeConfigurationParams) {
+        log::info!("[did_change_configuration] called {dccp:?}");
+        self.client
+            .log_message(MessageType::INFO, "configuration changed!")
+            .await;
+    }
+
     async fn shutdown(&self) -> TowerResult<()> {
+        log::info!("[shutdown] called");
         Ok(())
     }
 
+    async fn did_close(&self, _params: DidCloseTextDocumentParams) {
+        log::info!("[LintLsServer::did_close] called [params=...]");
+    }
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        log::info!("[LintLsServer::did_open] called [params={params:?}]");
+        log::info!("[LintLsServer::did_open] called [params=...]");
 
         if let Err(error) = self
             .run_diagnostics(JobSpec {
@@ -113,11 +121,11 @@ impl LanguageServer for LintLsServer {
             })
             .await
         {
-            log::error!("did_open: error: {error:?}");
+            log::warn!("did_open: {error:?}");
         }
     }
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
-        log::info!("[LintLsServer::did_change] called [params={params:?}]");
+        log::info!("[LintLsServer::did_change] called [params=...]");
         assert!(params.content_changes.len() == 1);
         if let Err(error) = self
             .run_diagnostics(JobSpec {
@@ -128,11 +136,21 @@ impl LanguageServer for LintLsServer {
             })
             .await
         {
-            log::error!("did_change: error: {error:?}");
+            log::warn!("did_change: {error:?}");
         }
     }
-
-    // Implement other necessary methods like did_change or did_save if needed.
+    async fn diagnostic(
+        &self,
+        params: DocumentDiagnosticParams,
+    ) -> TowerResult<DocumentDiagnosticReportResult> {
+        log::info!("[LintLsServer::diagnostic] called [params={params:?}]");
+        Ok(DocumentDiagnosticReportResult::Report(
+            DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+                related_documents: None,
+                full_document_diagnostic_report: FullDocumentDiagnosticReport::default(),
+            }),
+        ))
+    }
 }
 
 #[tokio::main]

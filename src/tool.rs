@@ -35,6 +35,7 @@ pub async fn run_tool(
     let stdout: tokio::process::ChildStdout = child.stdout.take().expect("Failed to open stdout");
     let tool = tool.clone();
     let client = client.clone();
+
     let join_handle: JoinHandle<()> = tokio::spawn(async move {
         if let Err(error) = ingest_errors(uri, version, client, tool, stdin, stdout).await {
             log::error!("[run_tool/spawn-ingest] error: {error:?}");
