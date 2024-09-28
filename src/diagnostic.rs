@@ -2,6 +2,7 @@ use crate::prelude::*;
 
 pub struct LintLsDiagnostic {
     pub line: u32,
+    pub column: Option<u32>,
     pub description: Option<String>,
 }
 
@@ -11,11 +12,11 @@ impl From<LintLsDiagnostic> for Diagnostic {
             range: Range {
                 start: Position {
                     line: diagnostic.line.saturating_sub(1),
-                    character: 0,
+                    character: diagnostic.column.unwrap_or(0),
                 },
                 end: Position {
                     line: diagnostic.line.saturating_sub(1),
-                    character: 0,
+                    character: diagnostic.column.unwrap_or(u32::MAX),
                 },
             },
             severity: Some(DiagnosticSeverity::ERROR),
@@ -24,7 +25,6 @@ impl From<LintLsDiagnostic> for Diagnostic {
             source: Some("lintls".to_string()),
             message: diagnostic
                 .description
-                .clone()
                 .unwrap_or_else(|| "error".to_string()),
             related_information: None,
             tags: None,

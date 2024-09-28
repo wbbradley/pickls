@@ -13,8 +13,8 @@ mod utils;
 
 struct LintLsServer {
     client: Client,
-    config: Arc<Mutex<LintLsConfig>>,
     jobs: Arc<Mutex<HashMap<JobId, Vec<Job>>>>,
+    config: Arc<Mutex<LintLsConfig>>,
 }
 
 impl LintLsServer {
@@ -26,8 +26,38 @@ impl LintLsServer {
         }
     }
 
+    async fn fetch_language_config(&self, language_id: String) -> Option<LintLsLanguageConfig> {
+        self.config
+            .lock()
+            .await
+            .languages
+            .get(&language_id)
+            .cloned()
+    }
+
     async fn run_diagnostics(&self, job_spec: JobSpec) -> Result<()> {
         let job_id = JobId::from(&job_spec);
+        let Some(extension) = get_extension_from_url(&job_spec.uri) else {
+            return Err(Error::new(format!(
+                "failed to get extension from uri [uri={uri}]",
+                uri = job_spec.uri
+            )));
+        };
+        let Some(language_id) = job_spec.language_id else {
+            return Err(Error::new(format!(
+                "failed to get language id from job_spec [job_spec={job_spec:?}]"
+            )));
+        };
+
+        // Get a copy of the tool configuration for future use.
+        let language_config: LintLsLanguageConfig = self
+            .fetch_language_config(language_id)
+            .await
+            .ok_or(Error::new(format!(
+            "failed to get language_config from language_id [language_id={language_id}]"
+        )))?;
+
+        // Lock the jobs structure while we manipulate it.
         let mut jobs = self.jobs.lock().await;
 
         // Get rid of a prior running jobs.
@@ -37,28 +67,19 @@ impl LintLsServer {
             }
         }
 
-        let tools = self.config.lock().await.tools.clone();
-        let Some(extension) = get_extension_from_url(&job_spec.uri) else {
-            return Err(Error::new(format!(
-                "failed to get extension from uri [uri={uri}]",
-                uri = job_spec.uri
-            )));
-        };
-
         let mut new_jobs: Vec<Job> = Default::default();
-        for tool in tools.iter().filter(|t| {
-            t.match_extensions
-                .iter()
-                .any(|match_extension| *match_extension == extension)
-        }) {
+
+        for linter in language_config.linters {
             let job_id: JobId = job_id.clone();
             let job_spec: JobSpec = job_spec.clone();
             let pid: Pid =
-                run_tool(&self.client, tool, job_spec.uri.clone(), job_spec.version).await?;
+                run_linter(&self.client, linter, job_spec.uri.clone(), job_spec.version).await?;
             debug_assert!(!jobs.contains_key(&job_id));
             new_jobs.push(Job { job_spec, pid });
         }
-        jobs.insert(job_id, new_jobs);
+
+        // Remember which jobs we started.
+        assert!(jobs.insert(job_id, new_jobs).is_none());
         Ok(())
     }
 }
@@ -142,7 +163,7 @@ impl LanguageServer for LintLsServer {
             })
             .await
         {
-            log::warn!("did_open: {error:?}");
+            log::error!("did_open: {error:?}");
         }
     }
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {

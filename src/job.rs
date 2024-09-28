@@ -25,7 +25,7 @@ pub struct JobToolPid {
     join_handle: JoinHandle<()>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct JobSpec {
     pub uri: Url,
     pub version: i32,

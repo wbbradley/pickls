@@ -7,6 +7,7 @@ pub(crate) use crate::tool::*;
 pub(crate) use crate::utils::*;
 pub use nix::unistd::Pid;
 pub use regex::Regex;
+pub use serde::Deserialize;
 pub use std::collections::HashMap;
 pub use std::fs::read_to_string;
 pub use std::sync::Arc;
