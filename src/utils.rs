@@ -1,6 +1,6 @@
 use crate::prelude::*;
 use std::process;
-use sysinfo::{Pid, System};
+pub use sysinfo::{Pid, System};
 
 pub fn get_extension_from_url(url: &Url) -> Option<String> {
     if let Some(path) = url.path_segments() {

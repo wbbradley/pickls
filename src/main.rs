@@ -4,6 +4,7 @@ use crate::prelude::*;
 
 mod config;
 mod diagnostic;
+mod errno;
 mod error;
 mod job;
 mod prelude;
@@ -13,7 +14,7 @@ mod utils;
 struct LintLsServer {
     client: Client,
     config: Arc<Mutex<LintLsConfig>>,
-    jobs: Arc<Mutex<HashMap<JobId, Job>>>,
+    jobs: Arc<Mutex<HashMap<JobId, Vec<Job>>>>,
 }
 
 impl LintLsServer {
@@ -28,10 +29,14 @@ impl LintLsServer {
     async fn run_diagnostics(&self, job_spec: JobSpec) -> Result<()> {
         let job_id = JobId::from(&job_spec);
         let mut jobs = self.jobs.lock().await;
-        if let Some(ref mut _job) = jobs.get_mut(&job_id) {
-            panic!("TODO: Job for ({job_id}) already exists!")
+
+        // Get rid of a prior running jobs.
+        if let Some(jobs) = jobs.remove(&job_id) {
+            for job in jobs {
+                job.spawn_kill();
+            }
         }
-        // HashMap<JobId, Job>
+
         let tools = self.config.lock().await.tools.clone();
         let Some(extension) = get_extension_from_url(&job_spec.uri) else {
             return Err(Error::new(format!(
@@ -40,20 +45,20 @@ impl LintLsServer {
             )));
         };
 
+        let mut new_jobs: Vec<Job> = Default::default();
         for tool in tools.iter().filter(|t| {
             t.match_extensions
                 .iter()
                 .any(|match_extension| *match_extension == extension)
         }) {
-            let job_id = job_id.clone();
-            let job_spec = job_spec.clone();
-            let pid: JobToolPid =
+            let job_id: JobId = job_id.clone();
+            let job_spec: JobSpec = job_spec.clone();
+            let pid: Pid =
                 run_tool(&self.client, tool, job_spec.uri.clone(), job_spec.version).await?;
-            jobs.entry(job_id).or_insert_with(|| Job {
-                job_spec,
-                job_state: JobState::Running(pid),
-            });
+            debug_assert!(!jobs.contains_key(&job_id));
+            new_jobs.push(Job { job_spec, pid });
         }
+        jobs.insert(job_id, new_jobs);
         Ok(())
     }
 }
@@ -96,9 +101,25 @@ impl LanguageServer for LintLsServer {
 
     async fn did_change_configuration(&self, dccp: DidChangeConfigurationParams) {
         log::info!("[did_change_configuration] called {dccp:?}");
-        self.client
-            .log_message(MessageType::INFO, "configuration changed!")
-            .await;
+        match serde_json::from_value::<LintLsConfig>(dccp.settings) {
+            Ok(config) => {
+                *self.config.lock().await = config.clone();
+                self.client
+                    .log_message(
+                        MessageType::INFO,
+                        format!("configuration changed [config={config:?}]!"),
+                    )
+                    .await;
+            }
+            Err(error) => {
+                self.client
+                    .log_message(
+                        MessageType::ERROR,
+                        format!("invalid lintls configuration [{error}]"),
+                    )
+                    .await;
+            }
+        }
     }
 
     async fn shutdown(&self) -> TowerResult<()> {
@@ -159,7 +180,7 @@ async fn main() -> Result<()> {
     let parent_process_info = fetch_parent_process_info().await;
     log::info!(
         "lintls started; pid={pid}; parent_process_info={parent_process_info}",
-        pid = getpid()
+        pid = nix::unistd::getpid()
     );
     let config_content: Option<String> = read_to_string("config.toml").ok();
     let config =

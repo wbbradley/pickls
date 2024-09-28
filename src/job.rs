@@ -19,9 +19,10 @@ impl From<&JobSpec> for JobId {
     }
 }
 
-pub enum JobState {
-    Running(JobToolPid),
-    Done,
+pub struct JobToolPid {
+    /// A Process ID for the job.
+    pid: u32,
+    join_handle: JoinHandle<()>,
 }
 
 #[derive(Clone)]
@@ -34,5 +35,26 @@ pub struct JobSpec {
 
 pub struct Job {
     pub job_spec: JobSpec,
-    pub job_state: JobState,
+    pub pid: Pid,
+}
+
+impl Job {
+    pub fn spawn_kill(self) {
+        tokio::spawn(async move {
+            // NB: Because we called process_group on the subprocess, its pid == its pgid.
+            log::warn!("killing job [pgid={pid}]", pid = self.pid);
+            unsafe {
+                let errno = Errno::from(nix::libc::killpg(
+                    self.pid.as_raw() as i32,
+                    nix::libc::SIGKILL,
+                ));
+                if errno.is_error() {
+                    log::error!(
+                        "failed to kill job [pid={pid}, error={errno}]",
+                        pid = self.pid
+                    );
+                }
+            }
+        });
+    }
 }

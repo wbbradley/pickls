@@ -1,32 +1,17 @@
 use regex::Captures;
 
 use crate::prelude::*;
+use nix::unistd::Pid;
 
-pub struct JobToolPid {
-    /// A Process ID for the job.
-    pid: u32,
-    join_handle: JoinHandle<()>,
-}
-
-pub async fn run_tool(
-    client: &Client,
-    tool: &LintTool,
-    uri: Url,
-    version: i32,
-) -> Result<JobToolPid> {
-    // Result<Vec<LintLsDiagnostic>> {
-    let mut cmd = Command::new(&tool.program);
-
-    // Ensure that the child process creates its own process group so that we can kill the whole group.
-    unsafe {
-        cmd.pre_exec(|| {
-            setpgid(getpid(), getpid()).expect("Failed to set new process group");
-            Ok(())
-        });
-    }
-
-    let mut child = cmd
-        .arg(uri.to_string())
+pub async fn run_tool(client: &Client, tool: &LintTool, uri: Url, version: i32) -> Result<Pid> {
+    let mut child = Command::new(&tool.program)
+        .process_group(0)
+        .arg(
+            uri.to_file_path()
+                .map_err(|()| Error::new("invalid file path passed to run_tool".to_string()))?
+                .to_str()
+                .unwrap(),
+        )
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()?;
@@ -36,15 +21,12 @@ pub async fn run_tool(
     let tool = tool.clone();
     let client = client.clone();
 
-    let join_handle: JoinHandle<()> = tokio::spawn(async move {
-        if let Err(error) = ingest_errors(uri, version, client, tool, stdin, stdout).await {
+    tokio::spawn(async move {
+        if let Err(error) = ingest_tool_errors(uri, version, client, tool, stdin, stdout).await {
             log::error!("[run_tool/spawn-ingest] error: {error:?}");
         }
     });
-    Ok(JobToolPid {
-        pid: child.id().unwrap(),
-        join_handle,
-    })
+    Ok(Pid::from_raw(child.id().unwrap() as i32))
 }
 
 fn convert_capture_to_diagnostic(tool: &LintTool, caps: Captures) -> Option<LintLsDiagnostic> {
@@ -56,7 +38,7 @@ fn convert_capture_to_diagnostic(tool: &LintTool, caps: Captures) -> Option<Lint
     })
 }
 
-async fn ingest_errors(
+async fn ingest_tool_errors(
     uri: Url,
     version: i32,
     client: Client,

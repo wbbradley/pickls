@@ -1,7 +1,7 @@
 // src/config.rs
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Clone, Debug, Deserialize, Default)]
 pub struct LintLsConfig {
     pub tools: Vec<LintTool>,
 }
