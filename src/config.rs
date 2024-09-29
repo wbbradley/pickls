@@ -5,14 +5,16 @@ pub struct LintLsConfig {
     pub languages: HashMap<String, LintLsLanguageConfig>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct LintLsLanguageConfig {
     /// All the linters you'd like to run on this language. Each linter runs in a subprocess group.
+    #[serde(default)]
     pub linters: Vec<LintLsLinterConfig>,
     /// All the formatters you'd like to run (in order) on this language. Note that you'll need to
     /// configure your editor to invoke its LSP client to cause formatting to occur. Successive
     /// formatters that set use_stdin will have chained pipes from stdout to stdin to eliminate extra
     /// copies.
+    #[serde(default)]
     pub formatters: Vec<LintLsFormatterConfig>,
 }
 
@@ -27,11 +29,21 @@ pub struct LintLsLinterConfig {
     pub filename_match: Option<usize>,
     /// Regex group (1-indexed) that matches the line number of the diagnostic.
     pub line_match: usize,
-    /// Regex group (1-indexed) that matches the column number of the diagnostic. (Optional)
-    pub col_match: Option<usize>,
+    /// Regex group (1-indexed) that matches the starting column number of the diagnostic. (Optional)
+    pub start_col_match: Option<usize>,
+    /// Regex group (1-indexed) that matches the ending column number of the diagnostic. (Optional)
+    pub end_col_match: Option<usize>,
     /// Regex group (1-indexed) that matches the line number of the diagnostic. Use -1 to indicate
     /// that the description is on the _previous_ line of input.
     pub description_match: Option<isize>,
+    /// Whether to scan stderr instead of stdout. Defaults to false. Setting to true will ignore
+    /// stdout.
+    #[serde(default = "default_false")]
+    pub use_stderr: bool,
+}
+
+fn default_false() -> bool {
+    false
 }
 
 #[derive(Clone, Debug, Deserialize)]

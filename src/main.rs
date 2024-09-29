@@ -26,27 +26,16 @@ impl LintLsServer {
         }
     }
 
-    async fn fetch_language_config(&self, language_id: String) -> Option<LintLsLanguageConfig> {
-        self.config
-            .lock()
-            .await
-            .languages
-            .get(&language_id)
-            .cloned()
+    async fn fetch_language_config(&self, language_id: &str) -> Option<LintLsLanguageConfig> {
+        self.config.lock().await.languages.get(language_id).cloned()
     }
 
     async fn run_diagnostics(&self, job_spec: JobSpec) -> Result<()> {
         let job_id = JobId::from(&job_spec);
-        let Some(extension) = get_extension_from_url(&job_spec.uri) else {
-            return Err(Error::new(format!(
-                "failed to get extension from uri [uri={uri}]",
-                uri = job_spec.uri
-            )));
-        };
-        let Some(language_id) = job_spec.language_id else {
-            return Err(Error::new(format!(
-                "failed to get language id from job_spec [job_spec={job_spec:?}]"
-            )));
+        let Some(ref language_id) = job_spec.language_id else {
+            return Err(Error::new(
+                "failed to get language id from job_spec".to_string(),
+            ));
         };
 
         // Get a copy of the tool configuration for future use.

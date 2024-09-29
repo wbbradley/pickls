@@ -43,17 +43,13 @@ impl Job {
         tokio::spawn(async move {
             // NB: Because we called process_group on the subprocess, its pid == its pgid.
             log::warn!("killing job [pgid={pid}]", pid = self.pid);
-            unsafe {
-                let errno = Errno::from(nix::libc::killpg(
-                    self.pid.as_raw() as i32,
-                    nix::libc::SIGKILL,
-                ));
-                if errno.is_error() {
-                    log::error!(
-                        "failed to kill job [pid={pid}, error={errno}]",
-                        pid = self.pid
-                    );
-                }
+            let errno =
+                unsafe { Errno::from(nix::libc::killpg(self.pid.as_raw(), nix::libc::SIGKILL)) };
+            if errno.is_error() {
+                log::error!(
+                    "failed to kill job [pid={pid}, error={errno}]",
+                    pid = self.pid
+                );
             }
         });
     }
