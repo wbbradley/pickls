@@ -33,9 +33,8 @@ impl LintLsServer {
     async fn run_diagnostics(&self, job_spec: JobSpec) -> Result<()> {
         let job_id = JobId::from(&job_spec);
         let Some(ref language_id) = job_spec.language_id else {
-            return Err(Error::new(
-                "failed to get language id from job_spec".to_string(),
-            ));
+            log::info!("run_diagnostics called without a language_id");
+            return Ok(());
         };
 
         // Get a copy of the tool configuration for future use.
@@ -58,11 +57,22 @@ impl LintLsServer {
 
         let mut new_jobs: Vec<Job> = Default::default();
 
-        for linter in language_config.linters {
+        for linter_config in language_config.linters {
             let job_id: JobId = job_id.clone();
             let job_spec: JobSpec = job_spec.clone();
-            let pid: Pid =
-                run_linter(&self.client, linter, job_spec.uri.clone(), job_spec.version).await?;
+            let file_content = if linter_config.use_stdin {
+                Some(job_spec.text.clone())
+            } else {
+                None
+            };
+            let pid: Pid = run_linter(
+                &self.client,
+                linter_config,
+                file_content,
+                job_spec.uri.clone(),
+                job_spec.version,
+            )
+            .await?;
             debug_assert!(!jobs.contains_key(&job_id));
             new_jobs.push(Job { job_spec, pid });
         }
@@ -148,7 +158,7 @@ impl LanguageServer for LintLsServer {
                 uri: params.text_document.uri,
                 version: params.text_document.version,
                 language_id: Some(params.text_document.language_id),
-                text: params.text_document.text,
+                text: Arc::new(params.text_document.text),
             })
             .await
         {
@@ -158,12 +168,22 @@ impl LanguageServer for LintLsServer {
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
         log::info!("[LintLsServer::did_change] called [params=...]");
         assert!(params.content_changes.len() == 1);
+        let job_id = JobId(params.text_document.uri.clone());
+        // NOTE: this is a little fragile, should find a better way of tracking language_ids.
+        let language_id: Option<String> = {
+            self.jobs
+                .lock()
+                .await
+                .get(&job_id)
+                .and_then(|jobs| jobs.first().map(|job| job.job_spec.language_id.clone()))
+                .flatten()
+        };
         if let Err(error) = self
             .run_diagnostics(JobSpec {
                 uri: params.text_document.uri,
                 version: params.text_document.version,
-                language_id: None,
-                text: params.content_changes.remove(0).text,
+                language_id,
+                text: Arc::new(params.content_changes.remove(0).text),
             })
             .await
         {

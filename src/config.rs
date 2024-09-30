@@ -22,6 +22,14 @@ pub struct LintLsLanguageConfig {
 pub struct LintLsLinterConfig {
     /// If `program` is not an absolute path, the `PATH` will be searched in an OS-defined way.
     pub program: String,
+    /// Arguments to pass to `program`. Use "$filename" wherever the absolute path to the real filename should go.
+    /// Use "$tmpfilename" where LintLs should inject a temp file (if the linter only accepts file
+    /// input).
+    #[serde(default = "Vec::new")]
+    pub args: Vec<String>,
+    /// Whether to use stdin to push the contents of the file to `program` or to rely on the usage
+    /// of "$filename" arg.
+    pub use_stdin: bool,
     /// Regex from which to pull diagnostics from stdout of `program`. The pattern is matched on
     /// every line of output. When there is a match, a diagnostic is produced.
     pub pattern: String,

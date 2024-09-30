@@ -65,3 +65,13 @@ impl From<String> for Error {
         }
     }
 }
+
+impl From<&str> for Error {
+    #[track_caller]
+    fn from(error: &str) -> Self {
+        Self {
+            message: format!("error: {error}"),
+            location: Location::caller(),
+        }
+    }
+}

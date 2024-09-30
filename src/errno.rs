@@ -1,10 +1,5 @@
-use crate::error::Result;
 use libc::strerror;
 use std::ffi::CStr;
-use std::fs::File;
-use std::io::BufRead;
-use std::io::{BufReader, Lines};
-use std::path::Path;
 
 #[allow(dead_code)]
 #[cfg(target_os = "linux")]
@@ -87,23 +82,5 @@ impl From<Errno> for String {
     fn from(errno: Errno) -> Self {
         String::from_utf8_lossy(unsafe { CStr::from_ptr(strerror(errno.errno)) }.to_bytes())
             .to_string()
-    }
-}
-
-pub fn read_lines<P>(filename: P) -> Result<Lines<BufReader<File>>>
-where
-    P: AsRef<Path>,
-{
-    let file = File::open(filename)?;
-    Ok(BufReader::new(file).lines())
-}
-
-#[cfg(test)]
-pub fn open_dev_null() -> libc::c_int {
-    unsafe {
-        match std::ffi::CString::new("/dev/null") {
-            Ok(name) => libc::open(name.as_ptr(), libc::O_RDWR, 0o644),
-            Err(_) => panic!("failed to make cstring"),
-        }
     }
 }
