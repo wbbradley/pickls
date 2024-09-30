@@ -45,15 +45,7 @@ pub async fn run_linter(
                 program = linter_config.program,
                 preamble = &file_content[..std::cmp::max(file_content.len(), 20)]
             );
-            let mut buf: &[u8] = file_content.as_bytes();
-            while !buf.is_empty() {
-                log::info!("making a write...");
-                let written = stdin
-                    .write(&buf[..std::cmp::min(buf.len(), 1 << 16)])
-                    .await?;
-                buf = &buf[written..];
-            }
-            log::info!("done writing!");
+            stdin.write_all(file_content.as_bytes()).await?;
         }
     }
 
