@@ -31,16 +31,19 @@ impl From<LintLsDiagnostic> for Diagnostic {
                     character: column,
                 },
             },
-            (Some(start_column), Some(end_column)) => Range {
-                start: Position {
-                    line: diag.line.saturating_sub(1),
-                    character: start_column.saturating_sub(1),
-                },
-                end: Position {
-                    line: diag.line.saturating_sub(1),
-                    character: end_column.saturating_sub(1),
-                },
-            },
+            (Some(start_column), Some(end_column)) => {
+                let start_col = start_column.saturating_sub(1);
+                Range {
+                    start: Position {
+                        line: diag.line.saturating_sub(1),
+                        character: start_col,
+                    },
+                    end: Position {
+                        line: diag.line.saturating_sub(1),
+                        character: std::cmp::max(start_col + 1, end_column.saturating_sub(1)),
+                    },
+                }
+            }
         };
         Self {
             range,

@@ -41,9 +41,10 @@ pub async fn run_linter(
     if linter_config.use_stdin {
         if let Some(file_content) = file_content {
             log::info!(
-                "writing to `{program}`: '{preamble}...'",
+                "writing to `{program}`'s stdin: '{preamble}...'",
                 program = linter_config.program,
-                preamble = &file_content[..std::cmp::max(file_content.len(), 20)]
+                preamble = String::from(&file_content[..std::cmp::min(file_content.len(), 20)])
+                    .replace("\n", "\\n")
             );
             stdin.write_all(file_content.as_bytes()).await?;
         }
@@ -145,7 +146,6 @@ async fn ingest_linter_errors(
             pattern = linter_config.pattern
         )
     })?;
-    // send file as stdin if config wants it.
     let mut reader = child_stdout.lines();
     let mut lsp_diagnostics: Vec<Diagnostic> = Default::default();
     let mut prior_line: Option<String> = None;

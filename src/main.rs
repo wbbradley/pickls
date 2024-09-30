@@ -87,7 +87,7 @@ type TowerResult<T> = tower_lsp::jsonrpc::Result<T>;
 #[tower_lsp::async_trait]
 impl LanguageServer for LintLsServer {
     async fn initialize(&self, _params: InitializeParams) -> TowerResult<InitializeResult> {
-        log::info!("initialize called [lintls_pid={}]", std::process::id());
+        log::info!("[initialize called [lintls_pid={}]", std::process::id());
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -99,7 +99,7 @@ impl LanguageServer for LintLsServer {
                         inter_file_dependencies: false,
                         workspace_diagnostics: false,
                         work_done_progress_options: WorkDoneProgressOptions {
-                            work_done_progress: None,
+                            work_done_progress: Some(false),
                         },
                     },
                 )),
@@ -120,7 +120,7 @@ impl LanguageServer for LintLsServer {
     }
 
     async fn did_change_configuration(&self, dccp: DidChangeConfigurationParams) {
-        log::info!("[did_change_configuration] called {dccp:?}");
+        log::info!("[did_change_configuration] called");
         match serde_json::from_value::<LintLsConfig>(dccp.settings) {
             Ok(config) => {
                 *self.config.lock().await = config.clone();
@@ -192,9 +192,9 @@ impl LanguageServer for LintLsServer {
     }
     async fn diagnostic(
         &self,
-        params: DocumentDiagnosticParams,
+        _params: DocumentDiagnosticParams,
     ) -> TowerResult<DocumentDiagnosticReportResult> {
-        log::info!("[LintLsServer::diagnostic] called [params={params:?}]");
+        log::info!("[diagnostic] called");
         Ok(DocumentDiagnosticReportResult::Report(
             DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
                 related_documents: None,
