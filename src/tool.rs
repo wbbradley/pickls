@@ -124,11 +124,17 @@ fn convert_capture_to_diagnostic(
     let end_column = linter_config
         .end_col_match
         .and_then(|i| caps.get(i)?.as_str().parse().ok());
+    let severity: Option<LintLsDiagnosticSeverity> = linter_config.severity_match.and_then(|i| {
+        Some(LintLsDiagnosticSeverity {
+            severity: caps.get(i)?.as_str().to_string(),
+        })
+    });
     Some(LintLsDiagnostic {
         source: linter_config.program.clone(),
         line,
         start_column,
         end_column,
+        severity,
         description,
     })
 }

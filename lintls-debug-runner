@@ -1,6 +1,6 @@
 #!/bin/bash
 
-logfile="$HOME"/src/lintls/lintls.log
+logfile="$HOME"/.local/state/lintls/lintls.log
 
 # For local development, assuming you've cloned this into "$HOME"/src/lintls, do something like:
 # ln -s "$HOME"/src/lintls/lintls-debug-runner "$HOME"/.local/bin/lintls

@@ -1,5 +1,6 @@
 pub(crate) use crate::config::*;
 pub(crate) use crate::diagnostic::*;
+pub(crate) use crate::diagnostic_severity::*;
 pub(crate) use crate::errno::*;
 pub(crate) use crate::error::*;
 pub(crate) use crate::job::*;

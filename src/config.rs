@@ -41,6 +41,9 @@ pub struct LintLsLinterConfig {
     pub start_col_match: Option<usize>,
     /// Regex group (1-indexed) that matches the ending column number of the diagnostic. (Optional)
     pub end_col_match: Option<usize>,
+    /// Regex group (1-indexed) that matches the severity of the alert. Unknown severities will
+    /// resolve to warnings.
+    pub severity_match: Option<usize>,
     /// Regex group (1-indexed) that matches the line number of the diagnostic. Use -1 to indicate
     /// that the description is on the _previous_ line of input.
     pub description_match: Option<isize>,

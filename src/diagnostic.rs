@@ -5,6 +5,7 @@ pub struct LintLsDiagnostic {
     pub line: u32,
     pub start_column: Option<u32>,
     pub end_column: Option<u32>,
+    pub severity: Option<LintLsDiagnosticSeverity>,
     pub description: Option<String>,
 }
 
@@ -47,7 +48,7 @@ impl From<LintLsDiagnostic> for Diagnostic {
         };
         Self {
             range,
-            severity: Some(DiagnosticSeverity::ERROR),
+            severity: diag.severity.map(DiagnosticSeverity::from),
             code: None,
             code_description: None,
             source: Some(diag.source),

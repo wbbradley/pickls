@@ -4,6 +4,7 @@ use crate::prelude::*;
 
 mod config;
 mod diagnostic;
+mod diagnostic_severity;
 mod errno;
 mod error;
 mod job;
@@ -132,12 +133,9 @@ impl LanguageServer for LintLsServer {
                     .await;
             }
             Err(error) => {
-                self.client
-                    .log_message(
-                        MessageType::ERROR,
-                        format!("invalid lintls configuration [{error}]"),
-                    )
-                    .await;
+                let message = format!("invalid lintls configuration [{error}]");
+                log::error!("{}", message);
+                self.client.log_message(MessageType::ERROR, message).await;
             }
         }
     }
@@ -206,7 +204,21 @@ impl LanguageServer for LintLsServer {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    simple_logging::log_to_file("lintls.log", log::LevelFilter::Trace).unwrap();
+    let log_dir = std::env::var("XDG_STATE_HOME").unwrap_or_else(|_| {
+        [
+            std::env::var("HOME").expect("no HOME dir").as_str(),
+            ".local",
+            "state",
+            "lintls",
+        ]
+        .join("/")
+    });
+    std::fs::create_dir_all(&log_dir)?;
+    simple_logging::log_to_file(
+        [log_dir.as_str(), "lintls.log"].join("/"),
+        log::LevelFilter::Trace,
+    )
+    .unwrap();
     let parent_process_info = fetch_parent_process_info().await;
     log::info!(
         "lintls started; pid={pid}; parent_process_info={parent_process_info}",
