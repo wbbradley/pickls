@@ -24,7 +24,7 @@ pub struct JobToolPid {
 #[derive(Clone, Debug)]
 pub struct JobSpec {
     pub uri: Url,
-    pub version: i32,
+    pub version: DocumentVersion,
     pub language_id: Option<String>,
     pub text: Arc<String>,
 }

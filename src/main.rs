@@ -5,6 +5,9 @@ use crate::prelude::*;
 mod config;
 mod diagnostic;
 mod diagnostic_severity;
+mod diagnostics_manager;
+mod document_diagnostics;
+mod document_version;
 mod errno;
 mod error;
 mod job;
@@ -16,14 +19,16 @@ struct LintLsServer {
     client: Client,
     jobs: Arc<Mutex<HashMap<JobId, Vec<Job>>>>,
     config: Arc<Mutex<LintLsConfig>>,
+    diagnostics_manager: DiagnosticsManager,
 }
 
 impl LintLsServer {
     pub fn new(client: Client, config: LintLsConfig) -> Self {
         Self {
-            client,
+            client: client.clone(),
             config: Arc::new(Mutex::new(config)),
             jobs: Arc::new(Mutex::new(Default::default())),
+            diagnostics_manager: DiagnosticsManager::new(client),
         }
     }
 
@@ -58,6 +63,7 @@ impl LintLsServer {
 
         let mut new_jobs: Vec<Job> = Default::default();
 
+        let linter_count = language_config.linters.len();
         for linter_config in language_config.linters {
             let job_id: JobId = job_id.clone();
             let job_spec: JobSpec = job_spec.clone();
@@ -67,7 +73,7 @@ impl LintLsServer {
                 None
             };
             let pid: Pid = run_linter(
-                &self.client,
+                self.diagnostics_manager.clone(),
                 linter_config,
                 file_content,
                 job_spec.uri.clone(),
@@ -154,7 +160,7 @@ impl LanguageServer for LintLsServer {
         if let Err(error) = self
             .run_diagnostics(JobSpec {
                 uri: params.text_document.uri,
-                version: params.text_document.version,
+                version: DocumentVersion(params.text_document.version),
                 language_id: Some(params.text_document.language_id),
                 text: Arc::new(params.text_document.text),
             })
@@ -179,7 +185,7 @@ impl LanguageServer for LintLsServer {
         if let Err(error) = self
             .run_diagnostics(JobSpec {
                 uri: params.text_document.uri,
-                version: params.text_document.version,
+                version: DocumentVersion(params.text_document.version),
                 language_id,
                 text: Arc::new(params.content_changes.remove(0).text),
             })

@@ -4,11 +4,11 @@ use crate::prelude::*;
 use nix::unistd::Pid;
 
 pub async fn run_linter(
-    client: &Client,
+    diagnostics_manager: DiagnosticsManager,
     linter_config: LintLsLinterConfig,
     file_content: Option<Arc<String>>,
     uri: Url,
-    version: i32,
+    version: DocumentVersion,
 ) -> Result<Pid> {
     let mut cmd = {
         let filename = uri
@@ -50,7 +50,6 @@ pub async fn run_linter(
         }
     }
 
-    let client = client.clone();
     let child_pid = Pid::from_raw(child.id().unwrap() as i32);
     tokio::spawn(async move {
         // TODO: maybe box these to enable vtbl-style polymorphism here.
@@ -58,7 +57,7 @@ pub async fn run_linter(
             ingest_linter_errors(
                 uri,
                 version,
-                client.clone(),
+                diagnostics_manager.clone(),
                 linter_config,
                 BufReader::new(child.stderr.take().expect("Failed to take stderr")),
             )
@@ -67,7 +66,7 @@ pub async fn run_linter(
             ingest_linter_errors(
                 uri,
                 version,
-                client.clone(),
+                diagnostics_manager.clone(),
                 linter_config,
                 BufReader::new(child.stdout.take().expect("Failed to take stdout")),
             )
@@ -80,6 +79,7 @@ pub async fn run_linter(
 }
 
 fn convert_capture_to_diagnostic(
+    absolute_filename: &str,
     linter_config: &LintLsLinterConfig,
     caps: Captures,
     prior_line: &Option<String>,
@@ -130,6 +130,7 @@ fn convert_capture_to_diagnostic(
         })
     });
     Some(LintLsDiagnostic {
+        filename: absolute_filename.to_string(),
         source: linter_config.program.clone(),
         line,
         start_column,
@@ -141,8 +142,8 @@ fn convert_capture_to_diagnostic(
 
 async fn ingest_linter_errors(
     uri: Url,
-    version: i32,
-    client: Client,
+    version: DocumentVersion,
+    mut diagnostics_manager: DiagnosticsManager,
     linter_config: LintLsLinterConfig,
     child_stdout: impl AsyncBufReadExt + Unpin,
 ) -> Result<()> {
@@ -160,7 +161,7 @@ async fn ingest_linter_errors(
         if let Some(caps) = re.captures(&line) {
             log::info!("caps: {caps:?}");
             if let Some(lsp_diagnostic) =
-                convert_capture_to_diagnostic(&linter_config, caps, &prior_line)
+                convert_capture_to_diagnostic(uri.path(), &linter_config, caps, &prior_line)
             {
                 lsp_diagnostics.push(lsp_diagnostic.into());
             }
@@ -171,8 +172,9 @@ async fn ingest_linter_errors(
         "publishing diagnostics [count={count}]",
         count = lsp_diagnostics.len()
     );
-    client
-        .publish_diagnostics(uri, lsp_diagnostics, Some(version))
+
+    diagnostics_manager
+        .update_diagnostics(uri, linter_config.program.clone(), version, lsp_diagnostics)
         .await;
     Ok(())
 }
