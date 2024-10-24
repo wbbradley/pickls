@@ -1,6 +1,7 @@
 use crate::prelude::*;
 
 pub struct LintLsDiagnostic {
+    pub linter: String,
     pub source: String,
     pub filename: String,
     pub line: u32,
@@ -33,7 +34,11 @@ impl From<LintLsDiagnostic> for Diagnostic {
             code: None,
             code_description: None,
             source: Some(diag.source),
-            message: diag.description.unwrap_or_else(|| "error".to_string()),
+            message: format!(
+                "[{}] {}",
+                diag.linter,
+                diag.description.unwrap_or_else(|| "error".to_string())
+            ),
             related_information: None,
             tags: None,
             data: None,

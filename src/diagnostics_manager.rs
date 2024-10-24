@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use futures::future::join_all;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_lsp::lsp_types::{Diagnostic, Url};
@@ -46,25 +47,18 @@ impl DiagnosticsManager {
             // The diagnostics for this (uri, linter program) pair have been
             // updated, publish them along with the appropriate versions of the
             // other linters.
-            let (uri, version, diagnostics) = document_diagnostics
+            let (uri, version, diagnostics, progress_messages) = document_diagnostics
                 .aggregate_most_recent_diagnostics(uri)
                 .await;
             self.client
                 .publish_diagnostics(uri.clone(), diagnostics, Some(version.0))
                 .await;
-            self.client
-                .send_notification::<Progress>(ProgressParams {
-                    token: ProgressToken::String(format!("{}:{}", uri, linter_name)),
-                    value: ProgressParamsValue::WorkDone(WorkDoneProgress::Report(
-                        WorkDoneProgressReport {
-                            cancellable: Some(false),
-                            message: Some("Diagnostics updated".into()),
-                            percentage: None,
-                            // title: Some("Diagnostics Update".into()),
-                        },
-                    )),
-                })
-                .await;
+
+            let futures = progress_messages.into_iter().map(|progress_message| {
+                self.client.send_notification::<Progress>(progress_message)
+            });
+
+            join_all(futures).await;
         }
     }
 }

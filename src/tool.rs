@@ -6,6 +6,7 @@ use nix::unistd::Pid;
 pub async fn run_linter(
     diagnostics_manager: DiagnosticsManager,
     linter_config: LintLsLinterConfig,
+    max_linter_count: usize,
     file_content: Option<Arc<String>>,
     uri: Url,
     version: DocumentVersion,
@@ -58,6 +59,7 @@ pub async fn run_linter(
                 uri,
                 version,
                 diagnostics_manager.clone(),
+                max_linter_count,
                 linter_config,
                 BufReader::new(child.stderr.take().expect("Failed to take stderr")),
             )
@@ -67,6 +69,7 @@ pub async fn run_linter(
                 uri,
                 version,
                 diagnostics_manager.clone(),
+                max_linter_count,
                 linter_config,
                 BufReader::new(child.stdout.take().expect("Failed to take stdout")),
             )
@@ -130,6 +133,7 @@ fn convert_capture_to_diagnostic(
         })
     });
     Some(LintLsDiagnostic {
+        linter: linter_config.program.clone(),
         filename: absolute_filename.to_string(),
         source: linter_config.program.clone(),
         line,
@@ -144,6 +148,7 @@ async fn ingest_linter_errors(
     uri: Url,
     version: DocumentVersion,
     mut diagnostics_manager: DiagnosticsManager,
+    max_linter_count: usize,
     linter_config: LintLsLinterConfig,
     child_stdout: impl AsyncBufReadExt + Unpin,
 ) -> Result<()> {
@@ -169,12 +174,19 @@ async fn ingest_linter_errors(
         prior_line = Some(line);
     }
     log::info!(
-        "publishing diagnostics [count={count}]",
+        "publishing diagnostics [linter={linter_name}, count={count}]",
+        linter_name = linter_config.program,
         count = lsp_diagnostics.len()
     );
 
     diagnostics_manager
-        .update_diagnostics(uri, linter_config.program.clone(), version, lsp_diagnostics)
+        .update_diagnostics(
+            uri,
+            linter_config.program.clone(),
+            max_linter_count,
+            version,
+            lsp_diagnostics,
+        )
         .await;
     Ok(())
 }

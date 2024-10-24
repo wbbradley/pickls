@@ -52,24 +52,67 @@ impl DocumentDiagnostics {
         &mut self,
         uri: Url,
     ) -> (Url, DocumentVersion, Vec<Diagnostic>, Vec<ProgressParams>) {
-        let linter_diagnostics = self
-            .linter_diagnostics
-            .get(&uri)
-            .expect("uri should have diagnostics");
+        let max_version = *self.versions.last().unwrap();
+        let available = self.linter_diagnostics.len();
+        let mut progress_messages = vec![make_progress_params(
+            uri.clone(),
+            max_version,
+            available,
+            self.max_linter_count,
+        )];
+        for &version in self.versions.iter().rev() {
+            if version == max_version {
+                continue;
+            }
+            progress_messages.push(ProgressParams {
+                token: make_progress_token(&uri, version),
+                value: ProgressParamsValue::WorkDone(WorkDoneProgress::End(WorkDoneProgressEnd {
+                    message: None,
+                })),
+            });
+        }
+        self.versions.retain(|x| *x == max_version);
+
         (
             uri,
-            self.max_version,
-            linter_diagnostics
+            *self.versions.last().unwrap(),
+            self.linter_diagnostics
                 .values()
-                .filter_map(|(version, diagnostics)| {
-                    if *version == self.max_version {
-                        Some(diagnostics.clone())
-                    } else {
-                        None
-                    }
-                })
                 .flatten()
+                .cloned()
                 .collect::<Vec<_>>(),
+            progress_messages,
         )
     }
+}
+fn make_progress_params(
+    uri: Url,
+    version: DocumentVersion,
+    available: usize,
+    expected: usize,
+) -> ProgressParams {
+    let percentage = if expected == 0 {
+        None
+    } else {
+        Some((available as f64 / expected as f64 * 100.0) as u32)
+    };
+    log::info!("publishing progress [uri={uri}, version={version}, available={available}, expected={expected}, percentage={percentage:?}]");
+
+    ProgressParams {
+        token: make_progress_token(&uri, version),
+        value: ProgressParamsValue::WorkDone(if expected == available && expected != 0 {
+            WorkDoneProgress::End(WorkDoneProgressEnd { message: None })
+        } else {
+            //
+            WorkDoneProgress::Report(WorkDoneProgressReport {
+                cancellable: Some(false),
+                message: Some("Diagnostics updated".into()),
+                percentage,
+            })
+        }),
+    }
+}
+
+fn make_progress_token(uri: &Url, version: DocumentVersion) -> ProgressToken {
+    ProgressToken::String(format!("{}:{}", uri, version))
 }

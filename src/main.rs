@@ -62,8 +62,8 @@ impl LintLsServer {
         }
 
         let mut new_jobs: Vec<Job> = Default::default();
+        let max_linter_count = language_config.linters.len();
 
-        let linter_count = language_config.linters.len();
         for linter_config in language_config.linters {
             let job_id: JobId = job_id.clone();
             let job_spec: JobSpec = job_spec.clone();
@@ -75,6 +75,7 @@ impl LintLsServer {
             let pid: Pid = run_linter(
                 self.diagnostics_manager.clone(),
                 linter_config,
+                max_linter_count,
                 file_content,
                 job_spec.uri.clone(),
                 job_spec.version,
