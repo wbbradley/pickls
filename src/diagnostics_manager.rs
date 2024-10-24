@@ -50,6 +50,10 @@ impl DiagnosticsManager {
             let (uri, version, diagnostics, progress_messages) = document_diagnostics
                 .aggregate_most_recent_diagnostics(uri)
                 .await;
+            log::info!(
+                "publishing diagnostics [linter={linter_name}, uri={uri}, version={version}, count={count}]",
+                count = diagnostics.len()
+            );
             self.client
                 .publish_diagnostics(uri.clone(), diagnostics, Some(version.0))
                 .await;
