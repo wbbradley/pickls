@@ -171,7 +171,3 @@ TODO: add instructions for zed
 #### VSCode
 
 TODO: add instructions for vscode
-
-## Troubleshooting
-
-Logs will be written to "$XDG_STATE_HOME
