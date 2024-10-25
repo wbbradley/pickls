@@ -26,8 +26,8 @@ any IDE that supports LSP.
 
 ## Why?
 
-Because my editor already supports LSP, and I wanted to avoid having to use a separate custom
-plugins just to invoke each linters or formatter.
+Because my editor already supports LSP, and I want to avoid having to find, install and configure
+(or build myself) separate custom plugins for each linter and formatter.
 
 ## Installation
 
@@ -43,6 +43,101 @@ cargo install pickls
 #### Running from source
 
 See `pickls-debug-runner` if you'd like to run from source.
+
+## Configuration
+
+Configuration happens inline in the LSP initialization settings of your IDE. Here is an example
+structure encoded in Lua.
+
+```lua
+# This is a Lua representation of the configuration, your editor might prefer JSON, etc.
+{
+  languages = {
+    python = {
+      linters = {
+        {
+          -- I have had great success running mypy as its own language server, so this just runs it as a linter.
+          program = "mypy",
+          args = {
+            "--show-column-numbers",
+            "--show-error-end",
+            "--hide-error-codes",
+            "--hide-error-context",
+            "--no-color-output",
+            "--no-error-summary",
+            "--no-pretty",
+            "--shadow-file",
+            "$filename",
+            "/dev/stdin",
+            "$filename",
+          },
+          pattern = "(.*):(\\d+):(\\d+):\\d+:(\\d+): error: (.*)",
+          filename_match = 1,
+          line_match = 2,
+          start_col_match = 3,
+          end_col_match = 4,
+          description_match = 5,
+          use_stdin = true,
+          use_stderr = false,
+        },
+        {
+          -- Don't do this, just use `ruff server` https://docs.astral.sh/ruff/editors/.
+          program = "ruff",
+          args = {
+            "check",
+            "--stdin-filename",
+            "$filename",
+          },
+          pattern = "(.*):(\\d+):(\\d+): (.*)",
+          filename_match = 1,
+          line_match = 2,
+          start_col_match = 3,
+          description_match = 4,
+          use_stdin = true,
+          use_stderr = false,
+        },
+      },
+    },
+    sh = {
+      linters = {
+        {
+          -- https://www.shellcheck.net/
+          program = "shellcheck",
+          args = {
+            "-f",
+            "gcc",
+            "-",
+          },
+          pattern = "(.*):(\\d+):(\\d+): (\\w+): (.*)",
+          filename_match = 1,
+          line_match = 2,
+          start_col_match = 3,
+          severity_match = 4,
+          description_match = 5,
+          use_stdin = true,
+          use_stderr = false,
+        },
+      },
+    },
+    toml = {
+      linters = {
+        {
+          -- https://pypi.org/project/tomllint/
+          program = "tomllint",
+          args = { "-" },
+          pattern = "(.*):(\\d+):(\\d+): error: (.*)",
+          filename_match = 1,
+          line_match = 2,
+          start_col_match = 3,
+          description_match = 4,
+          use_stdin = true,
+          use_stderr = true,
+        },
+      },
+    },
+  },
+}
+```
 
 ### Configuring your editor
 
@@ -64,90 +159,7 @@ vim.api.nvim_create_autocmd({ "BufRead" }, {
         -- the `pickls` process.
         root_dir = vim.fs.root(0, { ".git", "pyproject.toml", "setup.py", "Cargo.toml", "go.mod" }),
         settings = {
-          languages = {
-            python = {
-              linters = {
-                {
-                  -- I have had great success running mypy as its own language server, so this just runs it as a linter.
-                  program = "mypy",
-                  args = {
-                    "--show-column-numbers",
-                    "--show-error-end",
-                    "--hide-error-codes",
-                    "--hide-error-context",
-                    "--no-color-output",
-                    "--no-error-summary",
-                    "--no-pretty",
-                    "--shadow-file",
-                    "$filename",
-                    "/dev/stdin",
-                    "$filename",
-                  },
-                  pattern = "(.*):(\\d+):(\\d+):\\d+:(\\d+): error: (.*)",
-                  filename_match = 1,
-                  line_match = 2,
-                  start_col_match = 3,
-                  end_col_match = 4,
-                  description_match = 5,
-                  use_stdin = true,
-                  use_stderr = false,
-                },
-                {
-                  -- Don't do this, just use `ruff server` https://docs.astral.sh/ruff/editors/.
-                  program = "ruff",
-                  args = {
-                    "check",
-                    "--stdin-filename",
-                    "$filename",
-                  },
-                  pattern = "(.*):(\\d+):(\\d+): (.*)",
-                  filename_match = 1,
-                  line_match = 2,
-                  start_col_match = 3,
-                  description_match = 4,
-                  use_stdin = true,
-                  use_stderr = false,
-                },
-              },
-            },
-            sh = {
-              linters = {
-                {
-                  -- https://www.shellcheck.net/
-                  program = "shellcheck",
-                  args = {
-                    "-f",
-                    "gcc",
-                    "-",
-                  },
-                  pattern = "(.*):(\\d+):(\\d+): (\\w+): (.*)",
-                  filename_match = 1,
-                  line_match = 2,
-                  start_col_match = 3,
-                  severity_match = 4,
-                  description_match = 5,
-                  use_stdin = true,
-                  use_stderr = false,
-                },
-              },
-            },
-            toml = {
-              linters = {
-                {
-                  -- https://pypi.org/project/tomllint/
-                  program = "tomllint",
-                  args = { "-" },
-                  pattern = "(.*):(\\d+):(\\d+): error: (.*)",
-                  filename_match = 1,
-                  line_match = 2,
-                  start_col_match = 3,
-                  description_match = 4,
-                  use_stdin = true,
-                  use_stderr = true,
-                },
-              },
-            },
-          },
+          -- ...See configuration in README above...
         },
       }, {
         bufnr = 0,
