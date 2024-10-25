@@ -1,5 +1,7 @@
 # pickls
 
+![pickls](https://github.com/user-attachments/assets/64765055-e9a8-45a6-b89a-eb91c2e32ac7)
+
 ## Installing in Neovim
 
 ```lua
