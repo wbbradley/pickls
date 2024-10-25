@@ -209,23 +209,29 @@ impl LanguageServer for PicklsServer {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let log_dir = std::env::var("XDG_STATE_HOME").unwrap_or_else(|_| {
+fn get_state_dir() -> String {
+    std::env::var("XDG_STATE_HOME").unwrap_or_else(|_| {
         [
-            std::env::var("HOME").expect("no HOME dir").as_str(),
+            std::env::var("HOME")
+                .expect("no HOME dir in environment")
+                .as_str(),
             ".local",
             "state",
-            "pickls",
         ]
         .join("/")
-    });
+    })
+}
+
+fn setup_logging(level: log::LevelFilter) -> Result<()> {
+    let log_dir = format!("{state_dir}/pickls", state_dir = get_state_dir());
     std::fs::create_dir_all(&log_dir)?;
-    simple_logging::log_to_file(
-        [log_dir.as_str(), "pickls.log"].join("/"),
-        log::LevelFilter::Trace,
-    )
-    .unwrap();
+    simple_logging::log_to_file([log_dir.as_str(), "pickls.log"].join("/"), level)?;
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    setup_logging(log::LevelFilter::Info)?;
     let parent_process_info = fetch_parent_process_info().await;
     log::info!(
         "pickls started; pid={pid}; parent_process_info={parent_process_info}",

@@ -9,32 +9,32 @@
 In the spirit of [ale](https://github.com/dense-analysis/ale),
 [null-ls](https://github.com/jose-elias-alvarez/null-ls.nvim),
 [none-ls](https://github.com/nvimtools/none-ls.nvim), and
-[diagnostic-languageserver](https://github.com/iamcco/diagnostic-languageserver),
-`pickls` unifies configuration of classic command-line linters and formatters[0].
+[diagnostic-languageserver](https://github.com/iamcco/diagnostic-languageserver), `pickls` unifies
+configuration of classic command-line linters and formatters\[0\].
 
 You should use `pickls` if you
 
-  * are working in a project where your languages/toolchain lacks LSP integration, but you
-  * have command-line linting and formatting tools you'd like to integrate with your IDE.
-  * have tried the other tools in this category and are seeking an alternative.
+- are working in a project where your languages/toolchain lacks LSP integration, but you
+- have command-line linting and formatting tools you'd like to integrate with your IDE.
+- have tried the other tools in this category and are seeking an alternative.
 
-`pickls` allows for configuration of multiple linters and formatters for any language, and
-provides a unified way to run these tools on a per-file basis. `pickls` is designed to fit seamlessly into
+`pickls` allows for configuration of multiple linters and formatters for any language, and provides
+a unified way to run these tools on a per-file basis. `pickls` is designed to fit seamlessly into
 any IDE that supports LSP.
 
-[0] Formatters are not yet supported, but work is underway.
+\[0\] Formatters are not yet supported, but work is underway.
 
 ## Why?
 
-Because my editor already supports LSP, and I wanted to avoid having to use a
-separate custom plugins just to invoke each linters or formatter.
+Because my editor already supports LSP, and I wanted to avoid having to use a separate custom
+plugins just to invoke each linters or formatter.
 
 ## Installation
 
 ### Installing the pickls binary
 
-The following command assumes you have a working Rust toolchain installed, and
-the cargo binary directory is in your path.
+The following command assumes you have a working Rust toolchain installed, and the cargo binary
+directory is in your path.
 
 ```
 cargo install pickls
@@ -49,6 +49,7 @@ See `pickls-debug-runner` if you'd like to run from source.
 Once you have `pickls` installed, you can configure it to run within your editor.
 
 #### Neovim
+
 ```lua
 vim.api.nvim_create_autocmd({ "BufRead" }, {
   group = vim.api.nvim_create_augroup("pickls-bufread", { clear = true }),
@@ -170,3 +171,7 @@ TODO: add instructions for zed
 #### VSCode
 
 TODO: add instructions for vscode
+
+## Troubleshooting
+
+Logs will be written to "$XDG_STATE_HOME
