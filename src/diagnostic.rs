@@ -1,18 +1,18 @@
 use crate::prelude::*;
 
-pub struct LintLsDiagnostic {
+pub struct PicklsDiagnostic {
     pub linter: String,
     pub source: String,
     pub filename: String,
     pub line: u32,
     pub start_column: Option<u32>,
     pub end_column: Option<u32>,
-    pub severity: Option<LintLsDiagnosticSeverity>,
+    pub severity: Option<PicklsDiagnosticSeverity>,
     pub description: Option<String>,
 }
 
-impl From<LintLsDiagnostic> for Diagnostic {
-    fn from(diag: LintLsDiagnostic) -> Self {
+impl From<PicklsDiagnostic> for Diagnostic {
+    fn from(diag: PicklsDiagnostic) -> Self {
         let line = diag.line.saturating_sub(1);
         let start_column = diag.start_column.unwrap_or(1).saturating_sub(1);
         let end_column = diag.end_column.unwrap_or(start_column + 1);
@@ -35,7 +35,7 @@ impl From<LintLsDiagnostic> for Diagnostic {
             code_description: None,
             source: Some(diag.source),
             message: format!(
-                "[lintls/{}] {}",
+                "[pickls/{}] {}",
                 diag.linter,
                 diag.description.unwrap_or_else(|| "error".to_string())
             ),

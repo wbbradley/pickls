@@ -1,11 +1,11 @@
 use crate::prelude::*;
 
-pub struct LintLsDiagnosticSeverity {
+pub struct PicklsDiagnosticSeverity {
     pub severity: String,
 }
 
-impl From<LintLsDiagnosticSeverity> for DiagnosticSeverity {
-    fn from(diag_sev: LintLsDiagnosticSeverity) -> Self {
+impl From<PicklsDiagnosticSeverity> for DiagnosticSeverity {
+    fn from(diag_sev: PicklsDiagnosticSeverity) -> Self {
         match diag_sev.severity.to_lowercase().as_str() {
             "error" => DiagnosticSeverity::ERROR,
             "warn" | "warning" => DiagnosticSeverity::WARNING,

@@ -1,29 +1,29 @@
 use crate::prelude::*;
 
 #[derive(Clone, Debug, Deserialize, Default)]
-pub struct LintLsConfig {
-    pub languages: HashMap<String, LintLsLanguageConfig>,
+pub struct PicklsConfig {
+    pub languages: HashMap<String, PicklsLanguageConfig>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
-pub struct LintLsLanguageConfig {
+pub struct PicklsLanguageConfig {
     /// All the linters you'd like to run on this language. Each linter runs in a subprocess group.
     #[serde(default)]
-    pub linters: Vec<LintLsLinterConfig>,
+    pub linters: Vec<PicklsLinterConfig>,
     /// All the formatters you'd like to run (in order) on this language. Note that you'll need to
     /// configure your editor to invoke its LSP client to cause formatting to occur. Successive
     /// formatters that set use_stdin will have chained pipes from stdout to stdin to eliminate extra
     /// copies.
     #[serde(default)]
-    pub formatters: Vec<LintLsFormatterConfig>,
+    pub formatters: Vec<PicklsFormatterConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct LintLsLinterConfig {
+pub struct PicklsLinterConfig {
     /// If `program` is not an absolute path, the `PATH` will be searched in an OS-defined way.
     pub program: String,
     /// Arguments to pass to `program`. Use "$filename" wherever the absolute path to the real filename should go.
-    /// Use "$tmpfilename" where LintLs should inject a temp file (if the linter only accepts file
+    /// Use "$tmpfilename" where Pickls should inject a temp file (if the linter only accepts file
     /// input).
     #[serde(default = "Vec::new")]
     pub args: Vec<String>,
@@ -58,7 +58,7 @@ fn default_false() -> bool {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct LintLsFormatterConfig {
+pub struct PicklsFormatterConfig {
     /// If `program` is not an absolute path, the `PATH` will be searched in an OS-defined way.
     pub program: String,
     /// Arguments to pass to `program`. Use "$abspath" wherever the absolute path to the filename should go.
@@ -68,6 +68,6 @@ pub struct LintLsFormatterConfig {
     pub use_stdin: bool,
 }
 
-pub fn parse_config(content: &str) -> LintLsConfig {
+pub fn parse_config(content: &str) -> PicklsConfig {
     toml::from_str(content).expect("Failed to parse TOML configuration")
 }

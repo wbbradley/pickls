@@ -5,7 +5,7 @@ use nix::unistd::Pid;
 
 pub async fn run_linter(
     diagnostics_manager: DiagnosticsManager,
-    linter_config: LintLsLinterConfig,
+    linter_config: PicklsLinterConfig,
     max_linter_count: usize,
     file_content: Option<Arc<String>>,
     uri: Url,
@@ -83,10 +83,10 @@ pub async fn run_linter(
 
 fn convert_capture_to_diagnostic(
     absolute_filename: &str,
-    linter_config: &LintLsLinterConfig,
+    linter_config: &PicklsLinterConfig,
     caps: Captures,
     prior_line: &Option<String>,
-) -> Option<LintLsDiagnostic> {
+) -> Option<PicklsDiagnostic> {
     let caps_len = caps.len();
     let description: Option<String> = match linter_config.description_match {
         None => None,
@@ -127,12 +127,12 @@ fn convert_capture_to_diagnostic(
     let end_column = linter_config
         .end_col_match
         .and_then(|i| caps.get(i)?.as_str().parse().ok());
-    let severity: Option<LintLsDiagnosticSeverity> = linter_config.severity_match.and_then(|i| {
-        Some(LintLsDiagnosticSeverity {
+    let severity: Option<PicklsDiagnosticSeverity> = linter_config.severity_match.and_then(|i| {
+        Some(PicklsDiagnosticSeverity {
             severity: caps.get(i)?.as_str().to_string(),
         })
     });
-    Some(LintLsDiagnostic {
+    Some(PicklsDiagnostic {
         linter: linter_config.program.clone(),
         filename: absolute_filename.to_string(),
         source: linter_config.program.clone(),
@@ -149,7 +149,7 @@ async fn ingest_linter_errors(
     version: DocumentVersion,
     mut diagnostics_manager: DiagnosticsManager,
     max_linter_count: usize,
-    linter_config: LintLsLinterConfig,
+    linter_config: PicklsLinterConfig,
     child_stdout: impl AsyncBufReadExt + Unpin,
 ) -> Result<()> {
     let re = Regex::new(&linter_config.pattern).map_err(|e| {

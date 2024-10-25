@@ -1,0 +1,14 @@
+#!/bin/bash
+
+logfile="$HOME"/.local/state/pickls/pickls.log
+
+# For local development, assuming you've cloned this into "$HOME"/src/pickls, do something like:
+# ln -s "$HOME"/src/pickls/pickls-debug-runner "$HOME"/.local/bin/pickls
+echo "$0: invoked!" >>"$logfile"
+
+export RUST_BACKTRACE=1
+on_exit() {
+  echo "$0: exited!" >>"$logfile"
+}
+trap on_exit EXIT
+cargo run --quiet --manifest-path="$HOME"/src/pickls/Cargo.toml -- "$@" 2>>"$logfile"

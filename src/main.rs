@@ -15,15 +15,15 @@ mod prelude;
 mod tool;
 mod utils;
 
-struct LintLsServer {
+struct PicklsServer {
     client: Client,
     jobs: Arc<Mutex<HashMap<JobId, Vec<Job>>>>,
-    config: Arc<Mutex<LintLsConfig>>,
+    config: Arc<Mutex<PicklsConfig>>,
     diagnostics_manager: DiagnosticsManager,
 }
 
-impl LintLsServer {
-    pub fn new(client: Client, config: LintLsConfig) -> Self {
+impl PicklsServer {
+    pub fn new(client: Client, config: PicklsConfig) -> Self {
         Self {
             client: client.clone(),
             config: Arc::new(Mutex::new(config)),
@@ -32,7 +32,7 @@ impl LintLsServer {
         }
     }
 
-    async fn fetch_language_config(&self, language_id: &str) -> Option<LintLsLanguageConfig> {
+    async fn fetch_language_config(&self, language_id: &str) -> Option<PicklsLanguageConfig> {
         self.config.lock().await.languages.get(language_id).cloned()
     }
 
@@ -44,7 +44,7 @@ impl LintLsServer {
         };
 
         // Get a copy of the tool configuration for future use.
-        let language_config: LintLsLanguageConfig = self
+        let language_config: PicklsLanguageConfig = self
             .fetch_language_config(language_id)
             .await
             .ok_or(Error::new(format!(
@@ -93,9 +93,9 @@ impl LintLsServer {
 type TowerResult<T> = tower_lsp::jsonrpc::Result<T>;
 
 #[tower_lsp::async_trait]
-impl LanguageServer for LintLsServer {
+impl LanguageServer for PicklsServer {
     async fn initialize(&self, _params: InitializeParams) -> TowerResult<InitializeResult> {
-        log::info!("[initialize called [lintls_pid={}]", std::process::id());
+        log::info!("[initialize called [pickls_pid={}]", std::process::id());
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -114,7 +114,7 @@ impl LanguageServer for LintLsServer {
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
-                name: "lintls".to_string(),
+                name: "pickls".to_string(),
                 version: None,
             }),
         })
@@ -123,13 +123,13 @@ impl LanguageServer for LintLsServer {
     async fn initialized(&self, _: InitializedParams) {
         log::info!("[initialized] called");
         self.client
-            .log_message(MessageType::INFO, "lintls Server initialized")
+            .log_message(MessageType::INFO, "pickls Server initialized")
             .await;
     }
 
     async fn did_change_configuration(&self, dccp: DidChangeConfigurationParams) {
         log::info!("[did_change_configuration] called");
-        match serde_json::from_value::<LintLsConfig>(dccp.settings) {
+        match serde_json::from_value::<PicklsConfig>(dccp.settings) {
             Ok(config) => {
                 *self.config.lock().await = config.clone();
                 self.client
@@ -140,7 +140,7 @@ impl LanguageServer for LintLsServer {
                     .await;
             }
             Err(error) => {
-                let message = format!("invalid lintls configuration [{error}]");
+                let message = format!("invalid pickls configuration [{error}]");
                 log::error!("{}", message);
                 self.client.log_message(MessageType::ERROR, message).await;
             }
@@ -153,10 +153,10 @@ impl LanguageServer for LintLsServer {
     }
 
     async fn did_close(&self, _params: DidCloseTextDocumentParams) {
-        log::info!("[LintLsServer::did_close] called [params=...]");
+        log::info!("[PicklsServer::did_close] called [params=...]");
     }
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        log::info!("[LintLsServer::did_open] called [params=...]");
+        log::info!("[PicklsServer::did_open] called [params=...]");
 
         if let Err(error) = self
             .run_diagnostics(JobSpec {
@@ -171,7 +171,7 @@ impl LanguageServer for LintLsServer {
         }
     }
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
-        log::info!("[LintLsServer::did_change] called [params=...]");
+        log::info!("[PicklsServer::did_change] called [params=...]");
         assert!(params.content_changes.len() == 1);
         let job_id = JobId(params.text_document.uri.clone());
         // NOTE: this is a little fragile, should find a better way of tracking language_ids.
@@ -216,19 +216,19 @@ async fn main() -> Result<()> {
             std::env::var("HOME").expect("no HOME dir").as_str(),
             ".local",
             "state",
-            "lintls",
+            "pickls",
         ]
         .join("/")
     });
     std::fs::create_dir_all(&log_dir)?;
     simple_logging::log_to_file(
-        [log_dir.as_str(), "lintls.log"].join("/"),
+        [log_dir.as_str(), "pickls.log"].join("/"),
         log::LevelFilter::Trace,
     )
     .unwrap();
     let parent_process_info = fetch_parent_process_info().await;
     log::info!(
-        "lintls started; pid={pid}; parent_process_info={parent_process_info}",
+        "pickls started; pid={pid}; parent_process_info={parent_process_info}",
         pid = nix::unistd::getpid()
     );
     let config_content: Option<String> = read_to_string("config.toml").ok();
@@ -237,7 +237,7 @@ async fn main() -> Result<()> {
 
     let stdin = io::stdin();
     let stdout = io::stdout();
-    let (service, socket) = LspService::build(|client| LintLsServer::new(client, config)).finish();
+    let (service, socket) = LspService::build(|client| PicklsServer::new(client, config)).finish();
     Server::new(stdin, stdout, socket).serve(service).await;
     Ok(())
 }

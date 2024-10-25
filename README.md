@@ -1,17 +1,17 @@
-# lintls
+# pickls
 
 ## Installing in Neovim
 
 ```lua
 vim.api.nvim_create_autocmd({ "BufRead" }, {
-  group = vim.api.nvim_create_augroup("lintls-bufread", { clear = true }),
+  group = vim.api.nvim_create_augroup("pickls-bufread", { clear = true }),
   callback = function(_)
-    if vim.fn.executable("lintls") ~= 0 then
-      -- We found an executable for lintls.
+    if vim.fn.executable("pickls") ~= 0 then
+      -- We found an executable for pickls.
       vim.lsp.set_log_level(vim.log.levels.INFO)
       vim.lsp.start({
-        name = "lintls",
-        cmd = { "lintls", vim.api.nvim_buf_get_name(0) },
+        name = "pickls",
+        cmd = { "pickls", vim.api.nvim_buf_get_name(0) },
         root_dir = vim.fs.root(0, { ".git", "pyproject.toml", "setup.py", "Cargo.toml", "go.mod" }),
         settings = {
           languages = {
@@ -103,8 +103,8 @@ vim.api.nvim_create_autocmd({ "BufRead" }, {
       })
     else
       vim.notify(
-        "unable to find 'lintls' executable. not registering lintls as a language server. " ..
-        "see lintls-debug-runner for further instructions")
+        "unable to find 'pickls' executable. not registering pickls as a language server. " ..
+        "see pickls-debug-runner for further instructions")
     end
   end,
 })
