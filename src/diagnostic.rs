@@ -35,7 +35,7 @@ impl From<LintLsDiagnostic> for Diagnostic {
             code_description: None,
             source: Some(diag.source),
             message: format!(
-                "[{}] {}",
+                "[lintls/{}] {}",
                 diag.linter,
                 diag.description.unwrap_or_else(|| "error".to_string())
             ),
