@@ -50,7 +50,7 @@ Configuration happens inline in the LSP initialization settings of your IDE. Her
 structure encoded in Lua.
 
 ```lua
-# This is a Lua representation of the configuration, your editor might prefer JSON, etc.
+-- This is a Lua representation of the configuration, your editor might prefer JSON, etc.
 {
   languages = {
     python = {
