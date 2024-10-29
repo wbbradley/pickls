@@ -108,6 +108,10 @@ fn convert_capture_to_diagnostic(
             None
         }
     };
+    let filename = linter_config
+        .filename_match
+        .and_then(|i| caps.get(i).map(|x| x.as_str().to_string()))
+        .unwrap_or_else(|| absolute_filename.to_string());
     if linter_config.line_match >= caps_len {
         log::error!(
             "invalid line_match in linter configuration of `{program}`: pattern only captures {caps_len} groups but line_match = {line_match}.",
@@ -134,7 +138,7 @@ fn convert_capture_to_diagnostic(
     });
     Some(PicklsDiagnostic {
         linter: linter_config.program.clone(),
-        filename: absolute_filename.to_string(),
+        filename,
         line,
         start_column,
         end_column,
@@ -161,27 +165,39 @@ async fn ingest_linter_errors(
     let mut lsp_diagnostics: Vec<Diagnostic> = Default::default();
     let mut prior_line: Option<String> = None;
     while let Some(line) = reader.next_line().await? {
-        log::info!("line: {line}");
+        log::trace!("line: {line}");
         if let Some(caps) = re.captures(&line) {
-            log::info!("caps: {caps:?}");
+            log::trace!("caps: {caps:?}");
             if let Some(lsp_diagnostic) =
                 convert_capture_to_diagnostic(uri.path(), &linter_config, caps, &prior_line)
             {
-                lsp_diagnostics.push(lsp_diagnostic.into());
+                if Url::from_file_path(&std::fs::canonicalize(&lsp_diagnostic.filename)?)
+                    .map_or(false, |x| x == uri)
+                {
+                    lsp_diagnostics.push(lsp_diagnostic.into());
+                } else {
+                    log::warn!(
+                        "ignoring diagnostic [uri={uri}, filename={filename}] because it is not in the current document",
+                        filename = lsp_diagnostic.filename
+                    );
+                }
             }
         }
         prior_line = Some(line);
     }
-    dbg!(&lsp_diagnostics);
     log::info!(
         "publishing diagnostics [linter={linter_name}, count={count}]",
         linter_name = linter_config.program,
         count = lsp_diagnostics.len()
     );
 
+    // TODO: track errors from other documents. For now this is out of reach
+    // beacuse we don't have the current version of the other document
+    // readily available.
     diagnostics_manager
         .update_diagnostics(
-            uri,
+            uri.clone(),
+            // Url::from_file_path(filename.as_str()).unwrap(),
             linter_config.program.clone(),
             max_linter_count,
             version,
