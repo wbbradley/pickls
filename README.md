@@ -178,7 +178,118 @@ vim.api.nvim_create_autocmd({ "BufRead" }, {
 
 #### Zed
 
-TODO: add instructions for zed
+Currently to get `pickls` running Zed, you'll need to install `pickls-zed`. I
+haven't submitted a PR to Zed yet. Will do soon. For now, you can clone it and
+install it as a Dev Extension from
+[here](https://github.com/wbbradley/pickls-zed).
+
+```json
+{
+  "languages": {
+    "TOML": {
+      "language_servers": ["pickls"]
+    },
+    "Python": {
+      "language_servers": ["pickls"],
+    }
+  }
+  "lsp": {
+    "pickls": {
+      "binary": { "path": "pickls", "arguments": ["zed"] },
+      "initialization_options": {
+        "site": "zed",
+        "languages": {
+          "toml": {
+            "linters": [
+              {
+                "program": "tomllint",
+                "args": ["-"],
+                "pattern": "(.*):(\\d+):(\\d+): error: (.*)",
+                "filename_match": 1,
+                "line_match": 2,
+                "start_col_match": 3,
+                "description_match": 4,
+                "use_stdin": true,
+                "use_stderr": true
+              }
+            ]
+          },
+          "markdown": {
+            "linters": [
+              {
+                "program": "pymarkdown",
+                "args": ["scan-stdin"],
+                "pattern": "(.*):(\\d+):(\\d+): (.*)",
+                "filename_match": 1,
+                "line_match": 2,
+                "start_col_match": 3,
+                "description_match": 4,
+                "use_stdin": true,
+                "use_stderr": false
+              }
+            ]
+          },
+          "shell script": {
+            "linters": [
+              {
+                "program": "shellcheck",
+                "args": ["-f", "gcc", "-"],
+                "pattern": "(.*):(\\d+):(\\d+): (\\w+): (.*)",
+                "filename_match": 1,
+                "line_match": 2,
+                "start_col_match": 3,
+                "severity_match": 4,
+                "description_match": 5,
+                "use_stdin": true,
+                "use_stderr": false
+              }
+            ]
+          },
+          "python": {
+            "linters": [
+              {
+                "program": "mypy",
+                "args": [
+                  "--show-column-numbers",
+                  "--show-error-end",
+                  "--hide-error-codes",
+                  "--hide-error-context",
+                  "--no-color-output",
+                  "--no-error-summary",
+                  "--no-pretty",
+                  "--shadow-file",
+                  "$filename",
+                  "/dev/stdin",
+                  "$filename"
+                ],
+                "pattern": "(.*):(\\d+):(\\d+):\\d+:(\\d+): error: (.*)",
+                "filename_match": 1,
+                "line_match": 2,
+                "start_col_match": 3,
+                "end_col_match": 4,
+                "description_match": 5,
+                "use_stdin": true,
+                "use_stderr": false
+              },
+              {
+                "program": "ruff",
+                "args": ["check", "--stdin-filename", "$filename"],
+                "pattern": "(.*):(\\d+):(\\d+): (.*)",
+                "filename_match": 1,
+                "line_match": 2,
+                "start_col_match": 3,
+                "description_match": 4,
+                "use_stdin": true,
+                "use_stderr": false
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+```
 
 #### VSCode
 
