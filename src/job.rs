@@ -25,7 +25,7 @@ pub struct JobToolPid {
 pub struct JobSpec {
     pub uri: Url,
     pub version: DocumentVersion,
-    pub language_id: Option<String>,
+    pub language_id: String,
     pub text: Arc<String>,
 }
 

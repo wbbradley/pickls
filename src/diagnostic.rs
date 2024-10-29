@@ -2,7 +2,6 @@ use crate::prelude::*;
 
 pub struct PicklsDiagnostic {
     pub linter: String,
-    pub source: String,
     pub filename: String,
     pub line: u32,
     pub start_column: Option<u32>,
@@ -33,12 +32,8 @@ impl From<PicklsDiagnostic> for Diagnostic {
             severity: diag.severity.map(DiagnosticSeverity::from),
             code: None,
             code_description: None,
-            source: Some(diag.source),
-            message: format!(
-                "[pickls/{}] {}",
-                diag.linter,
-                diag.description.unwrap_or_else(|| "error".to_string())
-            ),
+            source: Some(format!("[pickls/{}]", diag.linter)),
+            message: diag.description.unwrap_or_else(|| "error".to_string()),
             related_information: None,
             tags: None,
             data: None,

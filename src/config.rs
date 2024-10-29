@@ -2,6 +2,8 @@ use crate::prelude::*;
 
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct PicklsConfig {
+    pub site: String,
+    #[serde(default)]
     pub languages: HashMap<String, PicklsLanguageConfig>,
 }
 

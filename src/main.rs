@@ -18,6 +18,7 @@ mod utils;
 struct PicklsServer {
     client: Client,
     jobs: Arc<Mutex<HashMap<JobId, Vec<Job>>>>,
+    document_language_ids: Arc<Mutex<HashMap<Url, String>>>,
     config: Arc<Mutex<PicklsConfig>>,
     diagnostics_manager: DiagnosticsManager,
 }
@@ -28,8 +29,13 @@ impl PicklsServer {
             client: client.clone(),
             config: Arc::new(Mutex::new(config)),
             jobs: Arc::new(Mutex::new(Default::default())),
+            document_language_ids: Arc::new(Mutex::new(Default::default())),
             diagnostics_manager: DiagnosticsManager::new(client),
         }
+    }
+
+    async fn get_site(&self) -> String {
+        self.config.lock().await.site.clone()
     }
 
     async fn fetch_language_config(&self, language_id: &str) -> Option<PicklsLanguageConfig> {
@@ -38,18 +44,13 @@ impl PicklsServer {
 
     async fn run_diagnostics(&self, job_spec: JobSpec) -> Result<()> {
         let job_id = JobId::from(&job_spec);
-        let Some(ref language_id) = job_spec.language_id else {
-            log::info!("run_diagnostics called without a language_id");
+
+        // Get a copy of the tool configuration for future use. Bail out if we
+        // can't find it, this just means that the user doesn't want us to
+        // run diagnostics for this language.
+        let Some(language_config) = self.fetch_language_config(&job_spec.language_id).await else {
             return Ok(());
         };
-
-        // Get a copy of the tool configuration for future use.
-        let language_config: PicklsLanguageConfig = self
-            .fetch_language_config(language_id)
-            .await
-            .ok_or(Error::new(format!(
-            "failed to get language_config from language_id [language_id={language_id}]"
-        )))?;
 
         // Lock the jobs structure while we manipulate it.
         let mut jobs = self.jobs.lock().await;
@@ -90,12 +91,23 @@ impl PicklsServer {
         Ok(())
     }
 }
-type TowerResult<T> = tower_lsp::jsonrpc::Result<T>;
+type TowerLspResult<T> = tower_lsp::jsonrpc::Result<T>;
 
 #[tower_lsp::async_trait]
 impl LanguageServer for PicklsServer {
-    async fn initialize(&self, _params: InitializeParams) -> TowerResult<InitializeResult> {
-        log::info!("[initialize called [pickls_pid={}]", std::process::id());
+    async fn initialize(&self, params: InitializeParams) -> TowerLspResult<InitializeResult> {
+        log::trace!(
+            "[initialize called [pickls_pid={}, params={params:?}]",
+            std::process::id()
+        );
+        if let Some(initialization_options) = params.initialization_options {
+            let site = self.get_site().await;
+            log::info!(
+                "[PicklsServer in {site}] initialize updating configuration [{:?}]",
+                initialization_options
+            );
+            update_configuration(&self.client, &self.config, initialization_options).await;
+        }
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -121,48 +133,54 @@ impl LanguageServer for PicklsServer {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        log::info!("[initialized] called");
+        let site = self.get_site().await;
+        log::info!("[PicklsServer in {site}] initialized called");
         self.client
             .log_message(MessageType::INFO, "pickls Server initialized")
             .await;
     }
 
     async fn did_change_configuration(&self, dccp: DidChangeConfigurationParams) {
-        log::info!("[did_change_configuration] called");
-        match serde_json::from_value::<PicklsConfig>(dccp.settings) {
-            Ok(config) => {
-                *self.config.lock().await = config.clone();
-                self.client
-                    .log_message(
-                        MessageType::INFO,
-                        format!("configuration changed [config={config:?}]!"),
-                    )
-                    .await;
-            }
-            Err(error) => {
-                let message = format!("invalid pickls configuration [{error}]");
-                log::error!("{}", message);
-                self.client.log_message(MessageType::ERROR, message).await;
+        if dccp.settings.is_null() {
+            return;
+        }
+        if let serde_json::Value::Object(ref map) = dccp.settings {
+            if map.is_empty() {
+                return;
             }
         }
+        update_configuration(&self.client, &self.config, dccp.settings).await;
     }
 
-    async fn shutdown(&self) -> TowerResult<()> {
-        log::info!("[shutdown] called");
+    async fn shutdown(&self) -> TowerLspResult<()> {
+        let site = self.get_site().await;
+        log::info!("[PicklsServer in {site}] shutdown called");
         Ok(())
     }
 
-    async fn did_close(&self, _params: DidCloseTextDocumentParams) {
-        log::info!("[PicklsServer::did_close] called [params=...]");
+    async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        let site = self.get_site().await;
+        self.document_language_ids
+            .lock()
+            .await
+            .remove(&params.text_document.uri);
+        log::info!("[PicklsServer in {site}] did_close called [params=...]");
     }
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        log::info!("[PicklsServer::did_open] called [params=...]");
-
+        let site = self.get_site().await;
+        log::info!(
+            "[PicklsServer in {site}] did_open called [language_id={language_id}, params=...]",
+            language_id = params.text_document.language_id
+        );
+        self.document_language_ids.lock().await.insert(
+            params.text_document.uri.clone(),
+            params.text_document.language_id.clone(),
+        );
         if let Err(error) = self
             .run_diagnostics(JobSpec {
                 uri: params.text_document.uri,
                 version: DocumentVersion(params.text_document.version),
-                language_id: Some(params.text_document.language_id),
+                language_id: params.text_document.language_id,
                 text: Arc::new(params.text_document.text),
             })
             .await
@@ -171,18 +189,23 @@ impl LanguageServer for PicklsServer {
         }
     }
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
-        log::info!("[PicklsServer::did_change] called [params=...]");
+        let site = self.get_site().await;
+        log::info!("[PicklsServer in {site}] did_change called [params=...]");
         assert!(params.content_changes.len() == 1);
-        let job_id = JobId(params.text_document.uri.clone());
-        // NOTE: this is a little fragile, should find a better way of tracking language_ids.
-        let language_id: Option<String> = {
-            self.jobs
-                .lock()
-                .await
-                .get(&job_id)
-                .and_then(|jobs| jobs.first().map(|job| job.job_spec.language_id.clone()))
-                .flatten()
+        let Some(language_id) = self
+            .document_language_ids
+            .lock()
+            .await
+            .get(&params.text_document.uri)
+            .cloned()
+        else {
+            log::error!(
+                "no language_id found for uri {uri}",
+                uri = params.text_document.uri
+            );
+            return;
         };
+
         if let Err(error) = self
             .run_diagnostics(JobSpec {
                 uri: params.text_document.uri,
@@ -198,7 +221,7 @@ impl LanguageServer for PicklsServer {
     async fn diagnostic(
         &self,
         _params: DocumentDiagnosticParams,
-    ) -> TowerResult<DocumentDiagnosticReportResult> {
+    ) -> TowerLspResult<DocumentDiagnosticReportResult> {
         log::info!("[diagnostic] called");
         Ok(DocumentDiagnosticReportResult::Report(
             DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
@@ -206,6 +229,28 @@ impl LanguageServer for PicklsServer {
                 full_document_diagnostic_report: FullDocumentDiagnosticReport::default(),
             }),
         ))
+    }
+}
+async fn update_configuration(
+    client: &Client,
+    pickls_settings: &Arc<Mutex<PicklsConfig>>,
+    settings: serde_json::Value,
+) {
+    match serde_json::from_value::<PicklsConfig>(settings) {
+        Ok(settings) => {
+            *pickls_settings.lock().await = settings.clone();
+            client
+                .log_message(
+                    MessageType::INFO,
+                    format!("configuration changed [config={settings:?}]!"),
+                )
+                .await;
+        }
+        Err(error) => {
+            let message = format!("invalid pickls configuration [{error}]");
+            log::warn!("{}", message);
+            client.log_message(MessageType::WARNING, message).await;
+        }
     }
 }
 
@@ -232,15 +277,17 @@ fn setup_logging(level: log::LevelFilter) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     setup_logging(log::LevelFilter::Info)?;
+    let site = std::env::args().nth(1);
     let parent_process_info = fetch_parent_process_info().await;
     log::info!(
         "pickls started; pid={pid}; parent_process_info={parent_process_info}",
         pid = nix::unistd::getpid()
     );
-    let config_content: Option<String> = read_to_string("config.toml").ok();
-    let config =
+    let config_content: Option<String> = read_to_string("pickls.toml").ok();
+    let mut config =
         config_content.map_or_else(Default::default, |content| config::parse_config(&content));
-
+    // Initialize the configuration's site name.
+    config.site = site.unwrap_or(config.site);
     let stdin = io::stdin();
     let stdout = io::stdout();
     let (service, socket) = LspService::build(|client| PicklsServer::new(client, config)).finish();

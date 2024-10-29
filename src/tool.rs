@@ -135,7 +135,6 @@ fn convert_capture_to_diagnostic(
     Some(PicklsDiagnostic {
         linter: linter_config.program.clone(),
         filename: absolute_filename.to_string(),
-        source: linter_config.program.clone(),
         line,
         start_column,
         end_column,
@@ -173,6 +172,7 @@ async fn ingest_linter_errors(
         }
         prior_line = Some(line);
     }
+    dbg!(&lsp_diagnostics);
     log::info!(
         "publishing diagnostics [linter={linter_name}, count={count}]",
         linter_name = linter_config.program,
