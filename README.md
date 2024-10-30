@@ -178,12 +178,19 @@ vim.api.nvim_create_autocmd({ "BufRead" }, {
 
 #### Zed
 
-Currently to get `pickls` running Zed, you'll need to install `pickls-zed`. I
-haven't submitted a PR to Zed yet. Will do soon. For now, you can clone it and
-install it as a Dev Extension from
+Currently to get `pickls` running in Zed, you'll need to install the Zed
+Extension `pickls-zed`. The only way to do that at the moment is to install it
+as a Dev Extension from
 [here](https://github.com/wbbradley/pickls-zed).
 
-```json
+```bash
+git clone https://github.com/wbbradley/pickls-zed
+```
+
+Add the following example settings to your Zed settings (typically found in
+`"$HOME"/.local/config/zed/settings.json`).
+
+```jsonc
 {
   "languages": {
     "TOML": {

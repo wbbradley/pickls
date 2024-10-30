@@ -9,13 +9,24 @@ pub struct PicklsConfig {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct PicklsLanguageConfig {
-    /// All the linters you'd like to run on this language. Each linter runs in a subprocess group.
+    /// A list of pathnames that indicate the root directory in relation to a file
+    /// being processed. pickls will use the first directory containing one of
+    /// these files as the root directory. The associated linter or formatter
+    /// will be run with its working directory set to this directory. (ie: pyproject.toml,
+    /// setup.py, Cargo.toml, go.mod, Makefile, etc...)
+    #[serde(default)]
+    pub root_markers: Vec<String>,
+
+    /// All the linters you'd like to run on this language. Each linter runs in
+    /// a subprocess group.
     #[serde(default)]
     pub linters: Vec<PicklsLinterConfig>,
-    /// All the formatters you'd like to run (in order) on this language. Note that you'll need to
-    /// configure your editor to invoke its LSP client to cause formatting to occur. Successive
-    /// formatters that set use_stdin will have chained pipes from stdout to stdin to eliminate extra
-    /// copies.
+
+    /// All the formatters you'd like to run (in order) on this language. Note
+    /// that you'll need to configure your editor to invoke its LSP client to
+    /// cause formatting to occur. Successive formatters that set use_stdin will
+    /// have chained pipes from stdout to stdin to eliminate extra copies.
+    /// NOTE: formatters are not yet supported.
     #[serde(default)]
     pub formatters: Vec<PicklsFormatterConfig>,
 }

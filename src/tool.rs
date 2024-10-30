@@ -3,15 +3,44 @@ use regex::Captures;
 use crate::prelude::*;
 use nix::unistd::Pid;
 
+fn get_root_dir(filename: &str, root_markers: &Vec<String>) -> Result<String> {
+    let starting_path = std::path::PathBuf::from(filename);
+    dbg!(&root_markers);
+    if !root_markers.is_empty() {
+        let mut path = starting_path.as_path();
+        log::info!("path = {path:?}");
+        while path.parent().is_some() {
+            path = path.parent().unwrap();
+            let path_buf = path.to_path_buf();
+            log::info!("path_buf = {path_buf:?}");
+            if root_markers
+                .iter()
+                .any(|marker| path_buf.join(marker).exists())
+            {
+                return Ok(path_buf.to_str().ok_or("invalid root dir")?.to_string());
+            }
+        }
+    }
+    let basedir = starting_path
+        .parent()
+        .ok_or("path has no basedir")?
+        .to_str()
+        .ok_or("invalid basedir path")?
+        .to_string();
+    log::info!("no root directory found for file {filename}, using {basedir}");
+    Ok(basedir)
+}
+
 pub async fn run_linter(
     diagnostics_manager: DiagnosticsManager,
     linter_config: PicklsLinterConfig,
+    root_markers: &Vec<String>,
     max_linter_count: usize,
     file_content: Option<Arc<String>>,
     uri: Url,
     version: DocumentVersion,
 ) -> Result<Pid> {
-    let mut cmd = {
+    let (mut cmd, root_dir) = {
         let filename = uri
             .to_file_path()
             .map_err(|()| "invalid file path passed to run_linter")?;
@@ -22,8 +51,14 @@ pub async fn run_linter(
         for arg in args.iter_mut() {
             *arg = arg.replace("$filename", filename);
         }
+        let root_dir: String = get_root_dir(filename, root_markers)?;
+        log::info!(
+            "running linter {program} with root_dir={root_dir}",
+            program = linter_config.program
+        );
         cmd.process_group(0)
             .args(args)
+            .current_dir(root_dir.clone())
             .stdin(std::process::Stdio::piped());
         if linter_config.use_stderr {
             cmd.stdout(std::process::Stdio::null())
@@ -32,7 +67,7 @@ pub async fn run_linter(
             cmd.stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null());
         }
-        cmd
+        (cmd, root_dir)
     };
     log::info!("spawning {cmd:?}...");
     let mut child = cmd.spawn()?;
@@ -59,6 +94,7 @@ pub async fn run_linter(
                 uri,
                 version,
                 diagnostics_manager.clone(),
+                &root_dir,
                 max_linter_count,
                 linter_config,
                 BufReader::new(child.stderr.take().expect("Failed to take stderr")),
@@ -69,6 +105,7 @@ pub async fn run_linter(
                 uri,
                 version,
                 diagnostics_manager.clone(),
+                &root_dir,
                 max_linter_count,
                 linter_config,
                 BufReader::new(child.stdout.take().expect("Failed to take stdout")),
@@ -151,6 +188,7 @@ async fn ingest_linter_errors(
     uri: Url,
     version: DocumentVersion,
     mut diagnostics_manager: DiagnosticsManager,
+    root_dir: &str,
     max_linter_count: usize,
     linter_config: PicklsLinterConfig,
     child_stdout: impl AsyncBufReadExt + Unpin,
@@ -164,21 +202,25 @@ async fn ingest_linter_errors(
     let mut reader = child_stdout.lines();
     let mut lsp_diagnostics: Vec<Diagnostic> = Default::default();
     let mut prior_line: Option<String> = None;
+    let root_dir = std::path::PathBuf::from(root_dir);
     while let Some(line) = reader.next_line().await? {
-        log::trace!("line: {line}");
+        log::info!("line: {line}");
         if let Some(caps) = re.captures(&line) {
-            log::trace!("caps: {caps:?}");
+            log::info!("caps: {caps:?}");
             if let Some(lsp_diagnostic) =
                 convert_capture_to_diagnostic(uri.path(), &linter_config, caps, &prior_line)
             {
-                if Url::from_file_path(&std::fs::canonicalize(&lsp_diagnostic.filename)?)
-                    .map_or(false, |x| x == uri)
-                {
+                let mut path = std::path::PathBuf::from(lsp_diagnostic.filename.clone());
+                if path.is_relative() {
+                    path = root_dir.join(path);
+                }
+                let realpath = path.canonicalize()?;
+                // TODO: deal with links a bit better.
+                if Url::from_file_path(&realpath).map_or(false, |x| x == uri) {
                     lsp_diagnostics.push(lsp_diagnostic.into());
                 } else {
                     log::warn!(
-                        "ignoring diagnostic [uri={uri}, filename={filename}] because it is not in the current document",
-                        filename = lsp_diagnostic.filename
+                        "ignoring diagnostic for {uri} because it is not in the current document [filename={realpath:?}]"
                     );
                 }
             }

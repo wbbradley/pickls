@@ -43,18 +43,21 @@ impl PicklsServer {
     }
 
     async fn run_diagnostics(&self, job_spec: JobSpec) -> Result<()> {
-        let job_id = JobId::from(&job_spec);
-
         // Get a copy of the tool configuration for future use. Bail out if we
         // can't find it, this just means that the user doesn't want us to
         // run diagnostics for this language.
         let Some(language_config) = self.fetch_language_config(&job_spec.language_id).await else {
+            log::info!(
+                "no language config found for language_id={language_id}, skipping",
+                language_id = job_spec.language_id
+            );
             return Ok(());
         };
 
         // Lock the jobs structure while we manipulate it.
         let mut jobs = self.jobs.lock().await;
 
+        let job_id = JobId::from(&job_spec);
         // Get rid of a prior running jobs.
         if let Some(jobs) = jobs.remove(&job_id) {
             for job in jobs {
@@ -76,6 +79,7 @@ impl PicklsServer {
             let pid: Pid = run_linter(
                 self.diagnostics_manager.clone(),
                 linter_config,
+                &language_config.root_markers,
                 max_linter_count,
                 file_content,
                 job_spec.uri.clone(),
