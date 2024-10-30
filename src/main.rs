@@ -226,7 +226,7 @@ impl LanguageServer for PicklsServer {
         &self,
         _params: DocumentDiagnosticParams,
     ) -> TowerLspResult<DocumentDiagnosticReportResult> {
-        log::info!("[diagnostic] called");
+        log::trace!("[diagnostic] called");
         Ok(DocumentDiagnosticReportResult::Report(
             DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
                 related_documents: None,

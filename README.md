@@ -46,17 +46,22 @@ See `pickls-debug-runner` if you'd like to run from source.
 
 ## Configuration
 
-Configuration happens inline in the LSP initialization settings of your IDE. Here is an example
-structure encoded in Lua.
+Configuration happens inline in the LSP initialization settings of your IDE. Documentation of the
+precise configuration syntax can be found
+[here](https://docs.rs/crate/pickls/latest/source/src/config.rs).
+
+Here is an example structure encoded in Lua.
 
 ```lua
 -- This is a Lua representation of the configuration, your editor might prefer JSON, etc.
 {
+  site = "neovim", -- `site` is purely for logging purposes, can be any string.
   languages = {
     python = {
       linters = {
         {
-          -- I have had great success running mypy as its own language server, so this just runs it as a linter.
+          -- I have not had great success running mypy as its own language server, so this runs
+          -- it as a traditional linter.
           program = "mypy",
           args = {
             "--show-column-numbers",
@@ -119,10 +124,30 @@ structure encoded in Lua.
         },
       },
     },
+    dockerfile = {
+      linters = {
+        {
+          -- See https://github.com/hadolint/hadolint
+          program = "hadolint",
+          args = {
+            "--no-color",
+            "--format",
+            "tty",
+            "-",
+          },
+          pattern = "-:(\\d+) [^ ]+ (\\w+): (.*)",
+          line_match = 1,
+          severity_match = 2,
+          description_match = 3,
+          use_stdin = true,
+          use_stderr = false,
+        },
+      },
+    },
     toml = {
       linters = {
         {
-          -- https://pypi.org/project/tomllint/
+          -- See https://pypi.org/project/tomllint/
           program = "tomllint",
           args = { "-" },
           pattern = "(.*):(\\d+):(\\d+): error: (.*)",
@@ -178,9 +203,8 @@ vim.api.nvim_create_autocmd({ "BufRead" }, {
 
 #### Zed
 
-Currently to get `pickls` running in Zed, you'll need to install the Zed
-Extension `pickls-zed`. The only way to do that at the moment is to install it
-as a Dev Extension from
+Currently to get `pickls` running in Zed, you'll need to install the Zed Extension `pickls-zed`. The
+only way to do that at the moment is to install it as a Dev Extension from
 [here](https://github.com/wbbradley/pickls-zed).
 
 ```bash
@@ -205,7 +229,22 @@ Add the following example settings to your Zed settings (typically found in
       "binary": { "path": "pickls", "arguments": ["zed"] },
       "initialization_options": {
         "site": "zed",
+
         "languages": {
+          "dockerfile": {
+            "linters": [
+              {
+                "program": "hadolint",
+                "args": ["--no-color", "--format", "tty", "-"],
+                "pattern": "-:(\\d+) [^ ]+ (\\w+): (.*)",
+                "line_match": 1,
+                "severity_match": 2,
+                "description_match": 3,
+                "use_stdin": true,
+                "use_stderr": false
+              }
+            ]
+          },
           "toml": {
             "linters": [
               {
@@ -218,21 +257,6 @@ Add the following example settings to your Zed settings (typically found in
                 "description_match": 4,
                 "use_stdin": true,
                 "use_stderr": true
-              }
-            ]
-          },
-          "markdown": {
-            "linters": [
-              {
-                "program": "pymarkdown",
-                "args": ["scan-stdin"],
-                "pattern": "(.*):(\\d+):(\\d+): (.*)",
-                "filename_match": 1,
-                "line_match": 2,
-                "start_col_match": 3,
-                "description_match": 4,
-                "use_stdin": true,
-                "use_stderr": false
               }
             ]
           },
@@ -253,6 +277,7 @@ Add the following example settings to your Zed settings (typically found in
             ]
           },
           "python": {
+            "root_markers": [".git", "pyproject.toml", "setup.py", "mypy.ini"],
             "linters": [
               {
                 "program": "mypy",
@@ -281,6 +306,21 @@ Add the following example settings to your Zed settings (typically found in
               {
                 "program": "ruff",
                 "args": ["check", "--stdin-filename", "$filename"],
+                "pattern": "(.*):(\\d+):(\\d+): (.*)",
+                "filename_match": 1,
+                "line_match": 2,
+                "start_col_match": 3,
+                "description_match": 4,
+                "use_stdin": true,
+                "use_stderr": false
+              }
+            ]
+          },
+          "markdown": {
+            "linters": [
+              {
+                "program": "pymarkdown",
+                "args": ["scan-stdin"],
                 "pattern": "(.*):(\\d+):(\\d+): (.*)",
                 "filename_match": 1,
                 "line_match": 2,
