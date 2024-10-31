@@ -1,6 +1,6 @@
 [package]
 name = "pickls"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 keywords = ["LSP", "protocol", "command-line", "ide", "diagnostics"]
