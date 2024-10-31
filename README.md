@@ -9,30 +9,34 @@
 In the spirit of [ale](https://github.com/dense-analysis/ale),
 [null-ls](https://github.com/jose-elias-alvarez/null-ls.nvim),
 [none-ls](https://github.com/nvimtools/none-ls.nvim), and
-[diagnostic-languageserver](https://github.com/iamcco/diagnostic-languageserver), `pickls` unifies
-configuration of classic command-line linters and formatters.
+[diagnostic-languageserver](https://github.com/iamcco/diagnostic-languageserver),
+`pickls` unifies configuration of classic command-line linters and formatters.
 
 You should use `pickls` if you
 
-- are working in a project where your languages/toolchain lacks LSP integration, but you
-- have command-line linting and formatting tools you'd like to integrate with your IDE.
-- have tried the other tools in this category and are seeking an alternative.
+- work in a project with a toolchain lacking LSP integration, and you
+- have command-line linting and formatting tools you'd like to integrate with
+  your IDE.
+- Or, maybe you have tried the other tools in this category and are seeking an
+  alternative.
 
-`pickls` allows for configuration of multiple linters and formatters for any language, and provides
-a unified way to run these tools on a per-file basis. `pickls` is designed to fit seamlessly into
-any IDE that supports LSP.
+`pickls` allows for configuration of multiple linters and formatters for any
+language, and provides a unified way to run these tools on a per-file basis.
+`pickls` is designed to fit seamlessly into any IDE that supports LSP.
 
 ## Why?
 
-Because my editor already supports LSP, and I want to avoid having to find, install and configure
-(or build myself) separate custom plugins for each linter and formatter.
+Because my editor already supports LSP, but I use a command-line oriented
+toolchain, and I want to avoid having to find, install and configure (or build
+myself) separate custom plugins or Language Servers for each tool in my
+workflow.
 
 ## Installation
 
 ### Installing the pickls binary
 
-The following command assumes you have a working Rust toolchain installed, and the cargo binary
-directory is in your path.
+The following command assumes you have a working recent `stable` Rust toolchain
+installed, and the cargo binary directory is in your path.
 
 ```
 cargo install pickls
@@ -40,20 +44,167 @@ cargo install pickls
 
 #### Running from source
 
-See `pickls-debug-runner` if you'd like to run from source.
+See `pickls-debug-runner` if you'd like to run from source. This is super useful
+for developing on `pickls` itself.
 
-## Configuration
+## Configuration (aka Initialization Options)
 
-Configuration happens inline in the LSP initialization settings of your IDE. Documentation of the
-precise configuration syntax can be found
+Configuration happens inline in the LSP initialization settings of your IDE.
+Documentation of the precise configuration syntax can be found
 [here](https://docs.rs/crate/pickls/latest/source/src/config.rs).
 
-Here is an example structure encoded in Lua.
+Here is an example configuration encoded in JSON. Note that this is an example
+for [Zed](https://zed.dev). Unfortunately, different editors use different
+`language_id`s for the same language, so you may need to tweak this
+configuration to match your editor's Language IDs.
+
+````json
+{
+  "site": "zed",
+  "languages": {
+    "shell script": {
+      "linters": [
+        {
+          "program": "shellcheck",
+          "args": ["-f", "gcc", "-"],
+          "pattern": "(.*):(\\d+):(\\d+): (\\w+): (.*)",
+          "filename_match": 1,
+          "line_match": 2,
+          "start_col_match": 3,
+          "severity_match": 4,
+          "description_match": 5,
+          "use_stdin": true,
+          "use_stderr": false
+        }
+      ]
+    },
+    "dockerfile": {
+      "linters": [
+        {
+          "program": "hadolint",
+          "args": ["--no-color", "--format", "tty", "-"],
+          "pattern": "-:(\\d+) [^ ]+ (\\w+): (.*)",
+          "line_match": 1,
+          "severity_match": 2,
+          "description_match": 3,
+          "use_stdin": true,
+          "use_stderr": false
+        }
+      ]
+    },
+    "yaml": {
+      "linters": [
+        {
+          "program": "yamllint",
+          "args": ["-f", "parsable", "-"],
+          "pattern": ".*:(\\d+):(\\d+): \\[(.*)\\] (.*) \\((.*)\\)",
+          "filename_match": null,
+          "line_match": 1,
+          "start_col_match": 2,
+          "severity_match": 3,
+          "description_match": 4,
+          "use_stdin": true,
+          "use_stderr": false
+        }
+      ]
+    },
+    "toml": {
+      "linters": [
+        {
+          "program": "tomllint",
+          "args": ["-"],
+          "pattern": "(.*):(\\d+):(\\d+): error: (.*)",
+          "filename_match": 1,
+          "line_match": 2,
+          "start_col_match": 3,
+          "description_match": 4,
+          "use_stdin": true,
+          "use_stderr": true
+        }
+      ]
+    },
+    "markdown": {
+      "formatters": [
+        {
+          "program": "mdformat",
+          "args": [ "--wrap", "80", "-" ]
+        }
+      ]
+    },
+    "python": {
+      "root_markers": [".git", "pyproject.toml", "setup.py", "mypy.ini"],
+      "formatters": [
+        {
+          "program": "autoimport",
+          "args": ["-"]
+        },
+        {
+          "program": "isort",
+          "args": ["-", "-d"]
+        },
+        {
+          "program": "ruff",
+          "args": [
+            "check",
+            "--exit-zero",
+            "--fix",
+            "--unsafe-fixes",
+            "--stdin-filename",
+            " $filename"
+          ]
+        },
+        {
+          "program": "ruff",
+          "args": ["format", "--stdin-filename", "$filename"]
+        }
+      ],
+      "linters": [
+        {
+          "program": "mypy",
+          "args": [
+            "--show-column-numbers",
+            "--show-error-end",
+            "--hide-error-codes",
+            "--hide-error-context",
+            "--no-color-output",
+            "--no-error-summary",
+            "--no-pretty",
+            "--shadow-file",
+            "$filename",
+            "/dev/stdin",
+            "$filename"
+          ],
+          "pattern": "(.*):(\\d+):(\\d+):\\d+:(\\d+): error: (.*)",
+          "filename_match": 1,
+          "line_match": 2,
+          "start_col_match": 3,
+          "end_col_match": 4,
+          "description_match": 5,
+          "use_stdin": true,
+          "use_stderr": false
+        },
+        {
+          "program": "ruff",
+          "args": ["check", "--stdin-filename", "$filename"],
+          "pattern": "(.*):(\\d+):(\\d+): (.*)",
+          "filename_match": 1,
+          "line_match": 2,
+          "start_col_match": 3,
+          "description_match": 4,
+          "use_stdin": true,
+          "use_stderr": false
+        }
+      ]
+    }
+  }
+}
+```
 
 ```lua
 -- This is a Lua representation of the configuration, your editor might prefer JSON, etc.
 {
-  site = "neovim", -- `site` is purely for logging purposes, can be any string.
+  -- `site` is purely for logging purposes, can be any string.
+  site = "neovim",
   languages = {
     python = {
       linters = {
@@ -160,11 +311,12 @@ Here is an example structure encoded in Lua.
     },
   },
 }
-```
+````
 
 ### Configuring your editor
 
-Once you have `pickls` installed, you can configure it to run within your editor.
+Once you have `pickls` installed, you can configure it to run within your
+editor.
 
 #### Neovim
 
@@ -201,9 +353,9 @@ vim.api.nvim_create_autocmd({ "BufRead" }, {
 
 #### Zed
 
-Currently to get `pickls` running in Zed, you'll need to install the Zed Extension `pickls-zed`. The
-only way to do that at the moment is to install it as a Dev Extension from
-[here](https://github.com/wbbradley/pickls-zed).
+Currently to get `pickls` running in Zed, you'll need to install the Zed
+Extension `pickls-zed`. The only way to do that at the moment is to install it
+as a Dev Extension from [here](https://github.com/wbbradley/pickls-zed).
 
 ```bash
 git clone https://github.com/wbbradley/pickls-zed
