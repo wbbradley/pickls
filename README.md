@@ -10,7 +10,7 @@ In the spirit of [ale](https://github.com/dense-analysis/ale),
 [null-ls](https://github.com/jose-elias-alvarez/null-ls.nvim),
 [none-ls](https://github.com/nvimtools/none-ls.nvim), and
 [diagnostic-languageserver](https://github.com/iamcco/diagnostic-languageserver), `pickls` unifies
-configuration of classic command-line linters and formatters\[0\].
+configuration of classic command-line linters and formatters.
 
 You should use `pickls` if you
 
@@ -21,8 +21,6 @@ You should use `pickls` if you
 `pickls` allows for configuration of multiple linters and formatters for any language, and provides
 a unified way to run these tools on a per-file basis. `pickls` is designed to fit seamlessly into
 any IDE that supports LSP.
-
-\[0\] Formatters are not yet supported, but work is underway.
 
 ## Why?
 

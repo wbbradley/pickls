@@ -26,7 +26,6 @@ pub struct PicklsLanguageConfig {
     /// that you'll need to configure your editor to invoke its LSP client to
     /// cause formatting to occur. Successive formatters that set use_stdin will
     /// have chained pipes from stdout to stdin to eliminate extra copies.
-    /// NOTE: formatters are not yet supported.
     #[serde(default)]
     pub formatters: Vec<PicklsFormatterConfig>,
 }
@@ -70,6 +69,10 @@ fn default_false() -> bool {
     false
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct PicklsFormatterConfig {
     /// If `program` is not an absolute path, the `PATH` will be searched in an OS-defined way.
@@ -77,7 +80,8 @@ pub struct PicklsFormatterConfig {
     /// Arguments to pass to `program`. Use "$abspath" wherever the absolute path to the filename should go.
     pub args: Vec<String>,
     /// Whether to use stdin to push the contents of the file to `program` or to rely on the usage
-    /// of "$abspath" arg.
+    /// of "$filename" arg.
+    #[serde(default = "default_true")]
     pub use_stdin: bool,
 }
 

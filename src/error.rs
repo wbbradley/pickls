@@ -9,6 +9,7 @@ pub struct Error {
 }
 
 impl Error {
+    #[allow(dead_code)]
     #[track_caller]
     pub fn new(message: String) -> Self {
         Self {

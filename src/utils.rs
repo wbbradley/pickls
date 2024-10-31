@@ -1,31 +1,5 @@
-use crate::prelude::*;
 use std::process;
 pub use sysinfo::{Pid, System};
-
-pub fn get_extension_from_url(url: &Url) -> Option<String> {
-    if let Some(path) = url.path_segments() {
-        if let Some(filename) = path.last() {
-            if filename.contains('.') {
-                return filename.rsplit('.').next().map(|x| format!(".{}", x));
-            }
-        }
-    }
-    None
-}
-
-#[test]
-fn test_extension_from_url() {
-    let tests = [
-        ("file:///var/log/foo.log", Some(".log")),
-        ("file:///var/log.blah/foo", None),
-    ];
-    for (uri, expect) in tests {
-        assert_eq!(
-            get_extension_from_url(&Url::parse(uri).unwrap()),
-            expect.map(String::from)
-        );
-    }
-}
 
 pub async fn fetch_parent_process_info() -> String {
     let mut system = System::new_all();

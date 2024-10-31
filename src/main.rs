@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 // src/main.rs
 use crate::prelude::*;
 
@@ -7,6 +6,7 @@ mod diagnostic;
 mod diagnostic_severity;
 mod diagnostics_manager;
 mod document_diagnostics;
+mod document_storage;
 mod document_version;
 mod errno;
 mod error;
@@ -18,7 +18,7 @@ mod utils;
 struct PicklsServer {
     client: Client,
     jobs: Arc<Mutex<HashMap<JobId, Vec<Job>>>>,
-    document_language_ids: Arc<Mutex<HashMap<Url, String>>>,
+    document_storage: Arc<Mutex<HashMap<Url, DocumentStorage>>>,
     config: Arc<Mutex<PicklsConfig>>,
     diagnostics_manager: DiagnosticsManager,
 }
@@ -29,7 +29,7 @@ impl PicklsServer {
             client: client.clone(),
             config: Arc::new(Mutex::new(config)),
             jobs: Arc::new(Mutex::new(Default::default())),
-            document_language_ids: Arc::new(Mutex::new(Default::default())),
+            document_storage: Arc::new(Mutex::new(Default::default())),
             diagnostics_manager: DiagnosticsManager::new(client),
         }
     }
@@ -40,6 +40,20 @@ impl PicklsServer {
 
     async fn fetch_language_config(&self, language_id: &str) -> Option<PicklsLanguageConfig> {
         self.config.lock().await.languages.get(language_id).cloned()
+    }
+
+    async fn get_document(&self, uri: &Url) -> TowerLspResult<(String, Arc<String>)> {
+        match self.document_storage.lock().await.get(&uri).cloned() {
+            Some(DocumentStorage {
+                language_id,
+                file_contents,
+            }) => Ok((language_id, file_contents)),
+            None => TowerLspResult::Err(tower_lsp::jsonrpc::Error {
+                code: tower_lsp::jsonrpc::ErrorCode::InvalidParams,
+                message: format!("No document found for url '{uri}'").into(),
+                data: None,
+            }),
+        }
     }
 
     async fn run_diagnostics(&self, job_spec: JobSpec) -> Result<()> {
@@ -87,7 +101,7 @@ impl PicklsServer {
             )
             .await?;
             debug_assert!(!jobs.contains_key(&job_id));
-            new_jobs.push(Job { job_spec, pid });
+            new_jobs.push(Job { pid });
         }
 
         // Remember which jobs we started.
@@ -127,6 +141,7 @@ impl LanguageServer for PicklsServer {
                         },
                     },
                 )),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -134,6 +149,66 @@ impl LanguageServer for PicklsServer {
                 version: None,
             }),
         })
+    }
+
+    async fn formatting(
+        &self,
+        params: DocumentFormattingParams,
+    ) -> TowerLspResult<Option<Vec<TextEdit>>> {
+        log::info!("[formatting] called");
+
+        let uri = params.text_document.uri;
+        let (language_id, file_contents) = self.get_document(&uri).await?;
+        let mut file_contents = file_contents.as_ref().clone();
+        let language_config = match self.fetch_language_config(&language_id).await {
+            Some(config) => config,
+            None => {
+                log::info!("No language config found for language ID {:?}", language_id);
+                return Ok(None);
+            }
+        };
+
+        // The big edit to return.
+        let mut edit: Option<TextEdit> = None;
+        log::info!(
+            "Formatting file '{uri}' with {count} formatters",
+            count = language_config.formatters.len()
+        );
+        for formatter_config in language_config.formatters {
+            let program = formatter_config.program.clone();
+            file_contents = match run_formatter(
+                formatter_config,
+                &language_config.root_markers,
+                file_contents,
+                uri.clone(),
+            )
+            .await
+            {
+                Ok(formatted_content) => {
+                    log::info!("Formatter succeeded for url '{uri}' [formatter={program}]");
+                    // Create a TextEdit that replaces the whole document
+                    edit = Some(TextEdit {
+                        range: Range {
+                            start: Position::new(0, 0),
+                            end: Position::new(u32::MAX, u32::MAX),
+                        },
+                        new_text: formatted_content.clone(),
+                    });
+                    formatted_content
+                }
+                Err(error) => {
+                    log::error!("Formatter error: {:?}", error);
+                    return TowerLspResult::Err(tower_lsp::jsonrpc::Error {
+                        code: tower_lsp::jsonrpc::ErrorCode::InvalidParams,
+                        message: format!("Formatter failed for url '{uri}' [formatter={program}]")
+                            .into(),
+                        data: None,
+                    });
+                }
+            };
+        }
+
+        Ok(edit.map(|edit| vec![edit]))
     }
 
     async fn initialized(&self, _: InitializedParams) {
@@ -164,7 +239,7 @@ impl LanguageServer for PicklsServer {
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let site = self.get_site().await;
-        self.document_language_ids
+        self.document_storage
             .lock()
             .await
             .remove(&params.text_document.uri);
@@ -176,16 +251,20 @@ impl LanguageServer for PicklsServer {
             "[PicklsServer in {site}] did_open called [language_id={language_id}, params=...]",
             language_id = params.text_document.language_id
         );
-        self.document_language_ids.lock().await.insert(
+        let file_contents = Arc::new(params.text_document.text);
+        self.document_storage.lock().await.insert(
             params.text_document.uri.clone(),
-            params.text_document.language_id.clone(),
+            DocumentStorage {
+                language_id: params.text_document.language_id.clone(),
+                file_contents: file_contents.clone(),
+            },
         );
         if let Err(error) = self
             .run_diagnostics(JobSpec {
                 uri: params.text_document.uri,
                 version: DocumentVersion(params.text_document.version),
                 language_id: params.text_document.language_id,
-                text: Arc::new(params.text_document.text),
+                text: file_contents,
             })
             .await
         {
@@ -196,26 +275,32 @@ impl LanguageServer for PicklsServer {
         let site = self.get_site().await;
         log::info!("[PicklsServer in {site}] did_change called [params=...]");
         assert!(params.content_changes.len() == 1);
-        let Some(language_id) = self
-            .document_language_ids
-            .lock()
-            .await
-            .get(&params.text_document.uri)
-            .cloned()
-        else {
-            log::error!(
-                "no language_id found for uri {uri}",
-                uri = params.text_document.uri
-            );
-            return;
+        let file_contents = Arc::new(params.content_changes.remove(0).text);
+        let uri = params.text_document.uri;
+
+        let language_id = {
+            let mut document_storage_map = self.document_storage.lock().await;
+            let Some(document_storage) = document_storage_map.get_mut(&uri) else {
+                self.client
+                    .log_message(
+                        MessageType::WARNING,
+                        format!("no document found for uri {uri}"),
+                    )
+                    .await;
+                return;
+            };
+
+            // Update the file contents.
+            document_storage.file_contents = file_contents.clone();
+            document_storage.language_id.clone()
         };
 
         if let Err(error) = self
             .run_diagnostics(JobSpec {
-                uri: params.text_document.uri,
+                uri,
                 version: DocumentVersion(params.text_document.version),
                 language_id,
-                text: Arc::new(params.content_changes.remove(0).text),
+                text: file_contents,
             })
             .await
         {
@@ -288,13 +373,15 @@ async fn main() -> Result<()> {
         pid = nix::unistd::getpid()
     );
     let config_content: Option<String> = read_to_string("pickls.toml").ok();
-    let mut config =
-        config_content.map_or_else(Default::default, |content| config::parse_config(&content));
+    let mut config = config_content
+        .as_ref()
+        .map(|x| x.as_str())
+        .map_or_else(Default::default, config::parse_config);
     // Initialize the configuration's site name.
     config.site = site.unwrap_or(config.site);
-    let stdin = io::stdin();
-    let stdout = io::stdout();
     let (service, socket) = LspService::build(|client| PicklsServer::new(client, config)).finish();
-    Server::new(stdin, stdout, socket).serve(service).await;
+    Server::new(io::stdin(), io::stdout(), socket)
+        .serve(service)
+        .await;
     Ok(())
 }

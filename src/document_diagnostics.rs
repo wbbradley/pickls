@@ -1,6 +1,7 @@
 use crate::prelude::*;
 
 pub(crate) struct DocumentDiagnostics {
+    #[allow(dead_code)]
     pub(crate) uri: Url,
     pub(crate) max_linter_count: usize,
     pub(crate) linter_diagnostics: HashMap<LinterName, Vec<Diagnostic>>,

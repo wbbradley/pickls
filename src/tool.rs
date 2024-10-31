@@ -248,3 +248,47 @@ async fn ingest_linter_errors(
         .await;
     Ok(())
 }
+
+pub async fn run_formatter(
+    formatter_config: PicklsFormatterConfig,
+    root_markers: &Vec<String>,
+    file_content: String,
+    uri: Url,
+) -> Result<String> {
+    let mut cmd = {
+        let filename = uri
+            .to_file_path()
+            .map_err(|()| "invalid file path passed to run_formatter")?;
+        let filename = filename.to_str().unwrap();
+
+        let mut cmd = Command::new(&formatter_config.program);
+        let mut args = formatter_config.args.clone();
+        for arg in args.iter_mut() {
+            *arg = arg.replace("$filename", filename);
+        }
+        let root_dir: String = get_root_dir(filename, root_markers)?;
+        log::info!(
+            "running formatter {program} with root_dir={root_dir}",
+            program = formatter_config.program
+        );
+        cmd.process_group(0).args(args).current_dir(root_dir);
+        if formatter_config.use_stdin {
+            cmd.stdin(std::process::Stdio::piped());
+        }
+        cmd.stdout(std::process::Stdio::piped());
+        cmd
+    };
+
+    log::info!("spawning {cmd:?} [stdin={}]", formatter_config.use_stdin);
+    let mut child = cmd.spawn()?;
+    let mut stdout = child.stdout.take().expect("Failed to open stdout");
+
+    if formatter_config.use_stdin {
+        let mut stdin = child.stdin.take().expect("Failed to open stdin");
+        stdin.write_all(file_content.as_bytes()).await?;
+    }
+
+    let mut formatted_content = String::new();
+    stdout.read_to_string(&mut formatted_content).await?;
+    Ok(formatted_content)
+}

@@ -15,12 +15,6 @@ impl From<&JobSpec> for JobId {
     }
 }
 
-pub struct JobToolPid {
-    /// A Process ID for the job.
-    pid: u32,
-    join_handle: JoinHandle<()>,
-}
-
 #[derive(Clone, Debug)]
 pub struct JobSpec {
     pub uri: Url,
@@ -30,7 +24,6 @@ pub struct JobSpec {
 }
 
 pub struct Job {
-    pub job_spec: JobSpec,
     pub pid: Pid,
 }
 
