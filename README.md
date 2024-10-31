@@ -38,7 +38,7 @@ workflow.
 The following command assumes you have a working recent `stable` Rust toolchain
 installed, and the cargo binary directory is in your path.
 
-```
+```sh
 cargo install pickls
 ```
 
@@ -58,7 +58,7 @@ for [Zed](https://zed.dev). Unfortunately, different editors use different
 `language_id`s for the same language, so you may need to tweak this
 configuration to match your editor's Language IDs.
 
-````json
+```json
 {
   "site": "zed",
   "languages": {
@@ -150,7 +150,7 @@ configuration to match your editor's Language IDs.
             "--fix",
             "--unsafe-fixes",
             "--stdin-filename",
-            " $filename"
+            "$filename"
           ]
         },
         {
@@ -200,12 +200,23 @@ configuration to match your editor's Language IDs.
 }
 ```
 
+Here's an example configuration for Neovim. (Note that hooking up the formatters
+is not explained here.
+
 ```lua
 -- This is a Lua representation of the configuration, your editor might prefer JSON, etc.
 {
   -- `site` is purely for logging purposes, can be any string.
   site = "neovim",
   languages = {
+    markdown = {
+      formatters =  {
+        {
+          "program": "mdformat",
+          "args": { "--wrap", "80", "-" },
+        },
+      },
+    },
     python = {
       linters = {
         {
@@ -311,7 +322,7 @@ configuration to match your editor's Language IDs.
     },
   },
 }
-````
+```
 
 ### Configuring your editor
 
@@ -348,6 +359,11 @@ vim.api.nvim_create_autocmd({ "BufRead" }, {
         "see pickls-debug-runner for further instructions")
     end
   end,
+})
+
+-- Ensure that the LSP server is used to format the buffer before saving.
+vim.api.nvim_create_autocmd("BufWritePre", {
+   callback = function() vim.lsp.buf.format({ bufnr = bufnr }) end
 })
 ```
 
