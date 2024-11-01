@@ -44,11 +44,9 @@ development purposes.
 
 ## Configuration
 
-Configuration lives in a couple of places. First, create a file named
-`pickls.yaml` and place it in your `"$XDG_CONFIG_HOME"/pickls` directory.
+Configuration lives in `"$XDG_CONFIG_HOME"/pickls/pickls.yaml`.
 
-Second, configure `pickls` within your editor through the LSP initialization
-settings. Configuration details are available
+Configuration details are available
 [here](https://docs.rs/crate/pickls/latest/source/src/config.rs).
 
 ### Example pickls.yaml
