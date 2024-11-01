@@ -53,8 +53,6 @@ Configuration details are available
 
 ```yaml
 ---
-.linters:
-  clang-format: &clang-format
 languages:
   c: &c-settings
     formatters:
