@@ -4,7 +4,54 @@ use crate::prelude::*;
 pub struct PicklsConfig {
     pub site: String,
     #[serde(default)]
+    pub linters: HashMap<String, PicklsLinterConfig>,
+    #[serde(default)]
     pub languages: HashMap<String, PicklsLanguageConfig>,
+}
+
+#[derive(Clone, Debug)]
+pub enum PicklsLinterChoice {
+    ByName(String),
+    Inline(PicklsLinterConfig),
+}
+
+impl<'de> Deserialize<'de> for PicklsLinterChoice {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Implement a custom deserializer that checks whether the object is a string, in which case
+        // it returns PicklsLinterChoice::ByName, or if it is a PicklsLinterConfig, in which case
+        // it uses the built-in deserializer to deserialize it.
+        struct PicklsLinterChoiceVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for PicklsLinterChoiceVisitor {
+            type Value = PicklsLinterChoice;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a linter name or a linter config")
+            }
+
+            fn visit_str<E>(self, v: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(PicklsLinterChoice::ByName(v.to_string()))
+            }
+
+            fn visit_map<M>(self, map: M) -> std::result::Result<Self::Value, M::Error>
+            where
+                M: serde::de::MapAccess<'de>,
+            {
+                let config = PicklsLinterConfig::deserialize(
+                    serde::de::value::MapAccessDeserializer::new(map),
+                )?;
+                Ok(PicklsLinterChoice::Inline(config))
+            }
+        }
+
+        deserializer.deserialize_any(PicklsLinterChoiceVisitor)
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -20,7 +67,7 @@ pub struct PicklsLanguageConfig {
     /// All the linters you'd like to run on this language. Each linter runs in
     /// a subprocess group.
     #[serde(default)]
-    pub linters: Vec<PicklsLinterConfig>,
+    pub linters: Vec<PicklsLinterChoice>,
 
     /// All the formatters you'd like to run (in order) on this language. Note
     /// that you'll need to configure your editor to invoke its LSP client to
