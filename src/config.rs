@@ -2,7 +2,6 @@ use crate::prelude::*;
 
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct PicklsConfig {
-    pub site: String,
     #[serde(default)]
     pub languages: HashMap<String, PicklsLanguageConfig>,
 }
@@ -86,5 +85,5 @@ pub struct PicklsFormatterConfig {
 }
 
 pub fn parse_config(content: &str) -> PicklsConfig {
-    toml::from_str(content).expect("Failed to parse TOML configuration")
+    serde_yml::from_str(content).expect("Failed to parse YAML configuration")
 }

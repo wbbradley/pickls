@@ -17,6 +17,7 @@ mod utils;
 
 struct PicklsServer {
     client: Client,
+    pub(crate) site: String,
     jobs: Arc<Mutex<HashMap<JobId, Vec<Job>>>>,
     document_storage: Arc<Mutex<HashMap<Url, DocumentStorage>>>,
     config: Arc<Mutex<PicklsConfig>>,
@@ -24,18 +25,15 @@ struct PicklsServer {
 }
 
 impl PicklsServer {
-    pub fn new(client: Client, config: PicklsConfig) -> Self {
+    pub fn new(client: Client, site: String, config: PicklsConfig) -> Self {
         Self {
             client: client.clone(),
+            site,
             config: Arc::new(Mutex::new(config)),
             jobs: Arc::new(Mutex::new(Default::default())),
             document_storage: Arc::new(Mutex::new(Default::default())),
             diagnostics_manager: DiagnosticsManager::new(client),
         }
-    }
-
-    async fn get_site(&self) -> String {
-        self.config.lock().await.site.clone()
     }
 
     async fn fetch_language_config(&self, language_id: &str) -> Option<PicklsLanguageConfig> {
@@ -119,10 +117,9 @@ impl LanguageServer for PicklsServer {
             std::process::id()
         );
         if let Some(initialization_options) = params.initialization_options {
-            let site = self.get_site().await;
             log::info!(
-                "[PicklsServer in {site}] initialize updating configuration [{:?}]",
-                initialization_options
+                "[PicklsServer in {site}] initialize updating configuration [{initialization_options:?}]",
+                site = self.site
             );
             update_configuration(&self.client, &self.config, initialization_options).await;
         }
@@ -212,8 +209,10 @@ impl LanguageServer for PicklsServer {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        let site = self.get_site().await;
-        log::info!("[PicklsServer in {site}] initialized called");
+        log::info!(
+            "[PicklsServer in {site}] initialized called",
+            site = self.site
+        );
         self.client
             .log_message(MessageType::INFO, "pickls Server initialized")
             .await;
@@ -232,23 +231,24 @@ impl LanguageServer for PicklsServer {
     }
 
     async fn shutdown(&self) -> TowerLspResult<()> {
-        let site = self.get_site().await;
-        log::info!("[PicklsServer in {site}] shutdown called");
+        log::info!("[PicklsServer in {site}] shutdown called", site = self.site);
         Ok(())
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        let site = self.get_site().await;
         self.document_storage
             .lock()
             .await
             .remove(&params.text_document.uri);
-        log::info!("[PicklsServer in {site}] did_close called [params=...]");
+        log::info!(
+            "[PicklsServer in {site}] did_close called [params=...]",
+            site = self.site
+        );
     }
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        let site = self.get_site().await;
         log::info!(
             "[PicklsServer in {site}] did_open called [language_id={language_id}, params=...]",
+            site = self.site,
             language_id = params.text_document.language_id
         );
         let file_contents = Arc::new(params.text_document.text);
@@ -272,8 +272,10 @@ impl LanguageServer for PicklsServer {
         }
     }
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
-        let site = self.get_site().await;
-        log::info!("[PicklsServer in {site}] did_change called [params=...]");
+        log::info!(
+            "[PicklsServer in {site}] did_change called [params=...]",
+            site = self.site
+        );
         assert!(params.content_changes.len() == 1);
         let file_contents = Arc::new(params.content_changes.remove(0).text);
         let uri = params.text_document.uri;
@@ -343,49 +345,58 @@ async fn update_configuration(
     }
 }
 
-fn get_state_dir() -> String {
-    std::env::var("XDG_STATE_HOME").unwrap_or_else(|_| {
-        [
-            std::env::var("HOME")
-                .expect("no HOME dir in environment")
-                .as_str(),
-            ".local",
-            "state",
-        ]
-        .join("/")
-    })
-}
-
-fn setup_logging(level: log::LevelFilter) -> Result<()> {
-    let log_dir = format!("{state_dir}/pickls", state_dir = get_state_dir());
-    std::fs::create_dir_all(&log_dir)?;
-    simple_logging::log_to_file([log_dir.as_str(), "pickls.log"].join("/"), level)?;
+fn setup_logging(base_dirs: &xdg::BaseDirectories, level: log::LevelFilter) -> Result<()> {
+    let log_file_path = base_dirs.place_state_file("pickls.log")?;
+    simple_logging::log_to_file(log_file_path, level)?;
     Ok(())
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    setup_logging(log::LevelFilter::Info)?;
+    let base_dirs = xdg::BaseDirectories::with_prefix(env!("CARGO_PKG_NAME")).unwrap();
+    setup_logging(&base_dirs, log::LevelFilter::Info)?;
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map_or(false, |arg| arg == "--version") {
         println!("{}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
 
+    // The site name is the first argument, if it exists.
     let site = args.get(1).cloned();
     let parent_process_info = fetch_parent_process_info().await;
     log::info!(
         "pickls started; pid={pid}; parent_process_info={parent_process_info}",
         pid = nix::unistd::getpid()
     );
-    let config_content: Option<String> = read_to_string("pickls.toml").ok();
-    let mut config = config_content
-        .as_ref()
-        .map(|x| x.as_str())
-        .map_or_else(Default::default, config::parse_config);
+    let config = {
+        let config_filename = base_dirs.get_config_file(format!("{}.yaml", env!("CARGO_PKG_NAME")));
+        log::info!("attempting to read configuration from {config_filename:?}");
+        let config = match read_to_string(config_filename) {
+            Ok(config_string) => Some(config::parse_config(&config_string)),
+            Err(error) => {
+                log::error!("failed to read configuration: {error}");
+                None
+            }
+        };
+        log::info!(
+            "configuration {}read.",
+            if config.is_some() {
+                "successfully "
+            } else {
+                "could not be "
+            }
+        );
+        config
+    };
     // Initialize the configuration's site name.
-    config.site = site.unwrap_or(config.site);
-    let (service, socket) = LspService::build(|client| PicklsServer::new(client, config)).finish();
+    let (service, socket) = LspService::build(|client| {
+        PicklsServer::new(
+            client,
+            site.unwrap_or("<unknown>".to_string()),
+            config.unwrap_or_default(),
+        )
+    })
+    .finish();
     Server::new(io::stdin(), io::stdout(), socket)
         .serve(service)
         .await;

@@ -203,6 +203,7 @@ async fn ingest_linter_errors(
     let mut lsp_diagnostics: Vec<Diagnostic> = Default::default();
     let mut prior_line: Option<String> = None;
     let root_dir = std::path::PathBuf::from(root_dir);
+    let realpath_for_uri = std::path::PathBuf::from(uri.path()).canonicalize()?;
     while let Some(line) = reader.next_line().await? {
         log::info!("line: {line}");
         if let Some(caps) = re.captures(&line) {
@@ -214,13 +215,12 @@ async fn ingest_linter_errors(
                 if path.is_relative() {
                     path = root_dir.join(path);
                 }
-                let realpath = path.canonicalize()?;
-                // TODO: deal with links a bit better.
-                if Url::from_file_path(&realpath).map_or(false, |x| x == uri) {
+                let realpath_for_diagnostic = path.canonicalize()?;
+                if realpath_for_uri == realpath_for_diagnostic {
                     lsp_diagnostics.push(lsp_diagnostic.into());
                 } else {
                     log::warn!(
-                        "ignoring diagnostic for {uri} because it is not in the current document [filename={realpath:?}]"
+                        "ignoring diagnostic for {uri} because it is not in the current document [filename={realpath_for_diagnostic:?}]"
                     );
                 }
             }
