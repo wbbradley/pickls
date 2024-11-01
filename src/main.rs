@@ -366,7 +366,13 @@ fn setup_logging(level: log::LevelFilter) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     setup_logging(log::LevelFilter::Info)?;
-    let site = std::env::args().nth(1);
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map_or(false, |arg| arg == "--version") {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
+    let site = args.get(1).cloned();
     let parent_process_info = fetch_parent_process_info().await;
     log::info!(
         "pickls started; pid={pid}; parent_process_info={parent_process_info}",
