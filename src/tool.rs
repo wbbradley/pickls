@@ -5,7 +5,6 @@ use nix::unistd::Pid;
 
 fn get_root_dir(filename: &str, root_markers: &Vec<String>) -> Result<String> {
     let starting_path = std::path::PathBuf::from(filename);
-    dbg!(&root_markers);
     if !root_markers.is_empty() {
         let mut path = starting_path.as_path();
         log::info!("path = {path:?}");
