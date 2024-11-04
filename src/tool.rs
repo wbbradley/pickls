@@ -3,7 +3,7 @@ use regex::Captures;
 use crate::prelude::*;
 use nix::unistd::Pid;
 
-fn get_root_dir(filename: &str, root_markers: &Vec<String>) -> Result<String> {
+fn get_root_dir(filename: &str, workspace: &Workspace, root_markers: &[String]) -> Result<String> {
     let starting_path = std::path::PathBuf::from(filename);
     if !root_markers.is_empty() {
         let mut path = starting_path.as_path();
@@ -11,10 +11,14 @@ fn get_root_dir(filename: &str, root_markers: &Vec<String>) -> Result<String> {
         while path.parent().is_some() {
             path = path.parent().unwrap();
             let path_buf = path.to_path_buf();
-            log::info!("path_buf = {path_buf:?}");
-            if root_markers
-                .iter()
-                .any(|marker| path_buf.join(marker).exists())
+            log::trace!("path_buf = {path_buf:?}");
+            // Do not allow our search for root markers to go beyond the
+            // workspace root (if it starts within it). And stop when we find a
+            // root marker.
+            if workspace.folders().any(|folder| folder == &path_buf)
+                || root_markers
+                    .iter()
+                    .any(|marker| path_buf.join(marker).exists())
             {
                 return Ok(path_buf.to_str().ok_or("invalid root dir")?.to_string());
             }
@@ -33,7 +37,8 @@ fn get_root_dir(filename: &str, root_markers: &Vec<String>) -> Result<String> {
 pub async fn run_linter(
     diagnostics_manager: DiagnosticsManager,
     linter_config: PicklsLinterConfig,
-    root_markers: &Vec<String>,
+    workspace: &Workspace,
+    root_markers: &[String],
     max_linter_count: usize,
     file_content: Option<Arc<String>>,
     uri: Url,
@@ -50,7 +55,7 @@ pub async fn run_linter(
         for arg in args.iter_mut() {
             *arg = arg.replace("$filename", filename);
         }
-        let root_dir: String = get_root_dir(filename, root_markers)?;
+        let root_dir: String = get_root_dir(filename, workspace, root_markers)?;
         log::info!(
             "running linter {program} with root_dir={root_dir}",
             program = linter_config.program
@@ -250,7 +255,8 @@ async fn ingest_linter_errors(
 
 pub async fn run_formatter(
     formatter_config: PicklsFormatterConfig,
-    root_markers: &Vec<String>,
+    workspace: &Workspace,
+    root_markers: &[String],
     file_content: String,
     uri: Url,
 ) -> Result<String> {
@@ -265,7 +271,7 @@ pub async fn run_formatter(
         for arg in args.iter_mut() {
             *arg = arg.replace("$filename", filename);
         }
-        let root_dir: String = get_root_dir(filename, root_markers)?;
+        let root_dir: String = get_root_dir(filename, workspace, root_markers)?;
         log::info!(
             "running formatter {program} with root_dir={root_dir}",
             program = formatter_config.program

@@ -1,9 +1,29 @@
 use crate::prelude::*;
 
+const MAX_SYMBOLS: usize = 250;
+
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct PicklsConfig {
     #[serde(default)]
     pub languages: HashMap<String, PicklsLanguageConfig>,
+    pub symbols: Option<PicklsSymbolsConfig>,
+}
+
+fn default_max_symbols() -> usize {
+    MAX_SYMBOLS
+}
+
+#[derive(Eq, PartialEq, Clone, Debug, Deserialize)]
+pub struct PicklsSymbolsConfig {
+    pub source: PicklsSymbolsSource,
+    #[serde(default = "default_max_symbols")]
+    pub max_symbols: usize,
+}
+
+#[derive(Eq, PartialEq, Clone, Debug, Deserialize)]
+pub enum PicklsSymbolsSource {
+    #[serde(rename = "universal-ctags")]
+    UniversalCtags,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -84,6 +104,6 @@ pub struct PicklsFormatterConfig {
     pub use_stdin: bool,
 }
 
-pub fn parse_config(content: &str) -> PicklsConfig {
-    serde_yml::from_str(content).expect("Failed to parse YAML configuration")
+pub fn parse_config(content: &str) -> Result<PicklsConfig> {
+    Ok(serde_yml::from_str(content)?)
 }

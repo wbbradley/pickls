@@ -2,6 +2,30 @@ use std::panic::Location;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub(crate) trait Context<T> {
+    fn context(self, context: &str) -> Result<T>;
+    fn ok_or_log(self, context: &str) -> Option<T>
+    where
+        Self: Sized,
+    {
+        match self.context(context) {
+            Ok(value) => Some(value),
+            Err(error) => {
+                log::error!("{error}");
+                None
+            }
+        }
+    }
+}
+
+impl<T, E: std::error::Error> Context<T> for std::result::Result<T, E> {
+    #[track_caller]
+    #[inline]
+    fn context(self, context: &str) -> Result<T> {
+        self.map_err(|e| Error::new(format!("{context}: {e}")))
+    }
+}
+
 #[derive(Debug)]
 pub struct Error {
     message: String,
@@ -32,6 +56,25 @@ impl From<Box<dyn std::error::Error>> for Error {
     fn from(error: Box<dyn std::error::Error>) -> Self {
         Self {
             message: format!("dyn error: {error:?}"),
+            location: Location::caller(),
+        }
+    }
+}
+
+impl From<regex::Error> for Error {
+    #[track_caller]
+    fn from(error: regex::Error) -> Self {
+        Self {
+            message: format!("regex error: {error:?}"),
+            location: Location::caller(),
+        }
+    }
+}
+
+impl From<serde_yml::Error> for Error {
+    fn from(error: serde_yml::Error) -> Self {
+        Self {
+            message: format!("yaml error: {error:?}"),
             location: Location::caller(),
         }
     }

@@ -1,4 +1,6 @@
 // src/main.rs
+#![allow(clippy::too_many_arguments)]
+
 use crate::prelude::*;
 
 mod config;
@@ -12,12 +14,16 @@ mod errno;
 mod error;
 mod job;
 mod prelude;
+mod tags;
 mod tool;
 mod utils;
+mod workspace;
 
 struct PicklsServer {
     client: Client,
-    pub(crate) site: String,
+    client_info: Arc<Mutex<Option<ClientInfo>>>,
+
+    workspace: Arc<Mutex<Workspace>>,
     jobs: Arc<Mutex<HashMap<JobId, Vec<Job>>>>,
     document_storage: Arc<Mutex<HashMap<Url, DocumentStorage>>>,
     config: Arc<Mutex<PicklsConfig>>,
@@ -25,10 +31,11 @@ struct PicklsServer {
 }
 
 impl PicklsServer {
-    pub fn new(client: Client, site: String, config: PicklsConfig) -> Self {
+    pub fn new(client: Client, config: PicklsConfig) -> Self {
         Self {
             client: client.clone(),
-            site,
+            client_info: Arc::new(Mutex::new(None)),
+            workspace: Arc::new(Mutex::new(Workspace::new())),
             config: Arc::new(Mutex::new(config)),
             jobs: Arc::new(Mutex::new(Default::default())),
             document_storage: Arc::new(Mutex::new(Default::default())),
@@ -40,8 +47,45 @@ impl PicklsServer {
         self.config.lock().await.languages.get(language_id).cloned()
     }
 
+    async fn get_client_name(&self) -> String {
+        if let Some(client_info) = self.client_info.lock().await.as_ref() {
+            format!(
+                "{}{}{}",
+                client_info.name,
+                if client_info.version.is_some() {
+                    "@"
+                } else {
+                    ""
+                },
+                client_info.version.as_deref().unwrap_or_default()
+            )
+        } else {
+            String::from("Client?")
+        }
+    }
+
+    async fn get_workspace_name(&self) -> String {
+        let name = self
+            .workspace
+            .lock()
+            .await
+            .folders()
+            .filter_map(|folder| folder.file_name().map(|x| x.to_string_lossy()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "{client_name}({workspace_name})",
+            client_name = self.get_client_name().await,
+            workspace_name = if name.is_empty() {
+                "<unknown>"
+            } else {
+                name.as_str()
+            }
+        )
+    }
+
     async fn get_document(&self, uri: &Url) -> TowerLspResult<(String, Arc<String>)> {
-        match self.document_storage.lock().await.get(&uri).cloned() {
+        match self.document_storage.lock().await.get(uri).cloned() {
             Some(DocumentStorage {
                 language_id,
                 file_contents,
@@ -59,7 +103,7 @@ impl PicklsServer {
         // can't find it, this just means that the user doesn't want us to
         // run diagnostics for this language.
         let Some(language_config) = self.fetch_language_config(&job_spec.language_id).await else {
-            log::info!(
+            log::trace!(
                 "no language config found for language_id={language_id}, skipping",
                 language_id = job_spec.language_id
             );
@@ -91,6 +135,7 @@ impl PicklsServer {
             let pid: Pid = run_linter(
                 self.diagnostics_manager.clone(),
                 linter_config,
+                self.workspace.lock().await.borrow(),
                 &language_config.root_markers,
                 max_linter_count,
                 file_content,
@@ -116,10 +161,24 @@ impl LanguageServer for PicklsServer {
             "[initialize called [pickls_pid={}, params={params:?}]",
             std::process::id()
         );
+        let mut client_info: tokio::sync::MutexGuard<Option<ClientInfo>> =
+            self.client_info.lock().await;
+        *client_info.deref_mut() = params.client_info;
+        if let (Some(workspace_folders), ref mut workspace) =
+            (params.workspace_folders, self.workspace.lock().await)
+        {
+            for workspace_folder in workspace_folders {
+                log::info!(
+                    "adding folder: [name='{name}', uri='{uri}']",
+                    name = workspace_folder.name,
+                    uri = workspace_folder.uri
+                );
+                workspace.add_folder(workspace_folder.uri);
+            }
+        };
         if let Some(initialization_options) = params.initialization_options {
             log::info!(
-                "[PicklsServer in {site}] initialize updating configuration [{initialization_options:?}]",
-                site = self.site
+                "[PicklsServer] initialize updating configuration [{initialization_options:?}]",
             );
             update_configuration(&self.client, &self.config, initialization_options).await;
         }
@@ -139,6 +198,19 @@ impl LanguageServer for PicklsServer {
                     },
                 )),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: if self.config.lock().await.symbols.is_some() {
+                    Some(OneOf::Right(WorkspaceSymbolOptions {
+                        work_done_progress_options: WorkDoneProgressOptions {
+                            // We don't support reporting progress for workspace symbols. Would probably need to be a heuristic.
+                            work_done_progress: Some(false),
+                        },
+                        // We don't yet support symbol resolution.
+                        resolve_provider: Some(false),
+                    }))
+                } else {
+                    None
+                },
+
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -175,6 +247,7 @@ impl LanguageServer for PicklsServer {
             let program = formatter_config.program.clone();
             file_contents = match run_formatter(
                 formatter_config,
+                self.workspace.lock().await.borrow(),
                 &language_config.root_markers,
                 file_contents,
                 uri.clone(),
@@ -210,8 +283,8 @@ impl LanguageServer for PicklsServer {
 
     async fn initialized(&self, _: InitializedParams) {
         log::info!(
-            "[PicklsServer in {site}] initialized called",
-            site = self.site
+            "[{site}] initialized called",
+            site = self.get_workspace_name().await
         );
         self.client
             .log_message(MessageType::INFO, "pickls Server initialized")
@@ -231,7 +304,10 @@ impl LanguageServer for PicklsServer {
     }
 
     async fn shutdown(&self) -> TowerLspResult<()> {
-        log::info!("[PicklsServer in {site}] shutdown called", site = self.site);
+        log::info!(
+            "[{site}] shutdown called",
+            site = self.get_workspace_name().await
+        );
         Ok(())
     }
 
@@ -241,14 +317,14 @@ impl LanguageServer for PicklsServer {
             .await
             .remove(&params.text_document.uri);
         log::info!(
-            "[PicklsServer in {site}] did_close called [params=...]",
-            site = self.site
+            "[{site}] did_close called [params=...]",
+            site = self.get_workspace_name().await
         );
     }
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         log::info!(
-            "[PicklsServer in {site}] did_open called [language_id={language_id}, params=...]",
-            site = self.site,
+            "[{site}] did_open called [language_id={language_id}, params=...]",
+            site = self.get_workspace_name().await,
             language_id = params.text_document.language_id
         );
         let file_contents = Arc::new(params.text_document.text);
@@ -272,9 +348,9 @@ impl LanguageServer for PicklsServer {
         }
     }
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
-        log::info!(
-            "[PicklsServer in {site}] did_change called [params=...]",
-            site = self.site
+        log::trace!(
+            "[{site}] did_change called [params=...]",
+            site = self.get_workspace_name().await
         );
         assert!(params.content_changes.len() == 1);
         let file_contents = Arc::new(params.content_changes.remove(0).text);
@@ -321,6 +397,70 @@ impl LanguageServer for PicklsServer {
             }),
         ))
     }
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> TowerLspResult<Option<Vec<SymbolInformation>>> {
+        let max_symbols = {
+            let config = &*self.config.lock().await;
+            if config.symbols.is_none() {
+                log::info!("symbol: not enabled");
+                return Ok(None);
+            }
+            config.symbols.as_ref().unwrap().max_symbols
+        };
+
+        log::info!(
+            "symbol: called with query: '{}' [cwd='{}']",
+            params.query,
+            std::env::current_dir().unwrap().display()
+        );
+        let folders = self
+            .workspace
+            .lock()
+            .await
+            .borrow()
+            .folders()
+            .cloned()
+            .collect::<Vec<_>>();
+        let query = params.query;
+        let symbols = match find_symbols(
+            &query,
+            &folders,
+            &vec![
+                ".git",
+                ".mypy_cache",
+                "*.json",
+                ".venv",
+                "target",
+                "node_modules",
+            ]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect(),
+            max_symbols,
+        )
+        .await
+        {
+            Ok(symbols) => symbols,
+            Err(error) => {
+                log::error!("symbol: error: {error:?}");
+                return TowerLspResult::Err(tower_lsp::jsonrpc::Error {
+                    code: tower_lsp::jsonrpc::ErrorCode::InvalidParams,
+                    message: format!("workspace_symbol failed for query '{query}'").into(),
+                    data: None,
+                });
+            }
+        };
+
+        if symbols.is_empty() {
+            log::info!("found no symbols");
+            return Ok(None);
+        }
+
+        log::info!("found symbols count = {}", symbols.len());
+        Ok(Some(symbols))
+    }
 }
 async fn update_configuration(
     client: &Client,
@@ -350,6 +490,26 @@ fn setup_logging(base_dirs: &xdg::BaseDirectories, level: log::LevelFilter) -> R
     simple_logging::log_to_file(log_file_path, level)?;
     Ok(())
 }
+fn read_config(base_dirs: &xdg::BaseDirectories) -> Option<PicklsConfig> {
+    let config_filename = base_dirs.get_config_file(format!("{}.yaml", env!("CARGO_PKG_NAME")));
+    log::info!("attempting to read configuration from {config_filename:?}");
+    let config = config::parse_config(
+        read_to_string(config_filename)
+            .ok_or_log("failed to read configuration")?
+            .as_str(),
+    )
+    .context("failed to parse YAML configuration")
+    .ok_or_log("failed to parse configuration");
+    log::info!(
+        "configuration {}read.",
+        if config.is_some() {
+            "successfully "
+        } else {
+            "could not be "
+        }
+    );
+    config
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -361,42 +521,16 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // The site name is the first argument, if it exists.
-    let site = args.get(1).cloned();
     let parent_process_info = fetch_parent_process_info().await;
     log::info!(
         "pickls started; pid={pid}; parent_process_info={parent_process_info}",
         pid = nix::unistd::getpid()
     );
-    let config = {
-        let config_filename = base_dirs.get_config_file(format!("{}.yaml", env!("CARGO_PKG_NAME")));
-        log::info!("attempting to read configuration from {config_filename:?}");
-        let config = match read_to_string(config_filename) {
-            Ok(config_string) => Some(config::parse_config(&config_string)),
-            Err(error) => {
-                log::error!("failed to read configuration: {error}");
-                None
-            }
-        };
-        log::info!(
-            "configuration {}read.",
-            if config.is_some() {
-                "successfully "
-            } else {
-                "could not be "
-            }
-        );
-        config
-    };
+    let config = read_config(&base_dirs);
+
     // Initialize the configuration's site name.
-    let (service, socket) = LspService::build(|client| {
-        PicklsServer::new(
-            client,
-            site.unwrap_or("<unknown>".to_string()),
-            config.unwrap_or_default(),
-        )
-    })
-    .finish();
+    let (service, socket) =
+        LspService::build(|client| PicklsServer::new(client, config.unwrap_or_default())).finish();
     Server::new(io::stdin(), io::stdout(), socket)
         .serve(service)
         .await;
