@@ -281,12 +281,15 @@ pub async fn run_formatter(
             cmd.stdin(std::process::Stdio::piped());
         }
         cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+        cmd.kill_on_drop(true);
         cmd
     };
 
     log::info!("spawning {cmd:?} [stdin={}]", formatter_config.use_stdin);
     let mut child = cmd.spawn()?;
     let mut stdout = child.stdout.take().expect("Failed to open stdout");
+    let mut stderr = child.stderr.take().expect("Failed to open stderr");
 
     if formatter_config.use_stdin {
         let mut stdin = child.stdin.take().expect("Failed to open stdin");
@@ -294,6 +297,33 @@ pub async fn run_formatter(
     }
 
     let mut formatted_content = String::new();
-    stdout.read_to_string(&mut formatted_content).await?;
-    Ok(formatted_content)
+    let mut error_text = String::new();
+
+    match tokio::join!(
+        stdout.read_to_string(&mut formatted_content),
+        stderr.read_to_string(&mut error_text)
+    ) {
+        (Ok(stdout_len), Ok(stderr_len)) => {
+            log::info!("stdout_len = {stdout_len}, stderr_len = {stderr_len}");
+            if stderr_len != 0 {
+                // Writing anything to stderr is considered a formatting failure.
+                log::error!("Failed to format file {uri}: {error_text}");
+                return Err(Error::new("Failed to format file".to_string()));
+            }
+        }
+        (Err(err), Err(err2)) => {
+            log::error!("Failed to format file {uri}: {err} & {err2}");
+        }
+        (Err(err), _) | (_, Err(err)) => {
+            log::error!("Failed to format file {uri}: {err}");
+        }
+    };
+
+    let exit_status = child.wait().await?;
+    if exit_status.success() {
+        Ok(formatted_content)
+    } else {
+        log::error!("Failed to format file {uri}");
+        Err(Error::new("Failed to format file".to_string()))
+    }
 }

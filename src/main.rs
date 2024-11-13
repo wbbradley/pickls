@@ -255,7 +255,10 @@ impl LanguageServer for PicklsServer {
             .await
             {
                 Ok(formatted_content) => {
-                    log::info!("Formatter succeeded for url '{uri}' [formatter={program}]");
+                    log::info!(
+                        "Formatter {program} succeeded for url '{uri}' [formatted_len={formatted_len}, formatter={program}]",
+                        formatted_len = formatted_content.len(),
+                    );
                     // Create a TextEdit that replaces the whole document
                     edit = Some(TextEdit {
                         range: Range {
