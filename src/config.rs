@@ -99,9 +99,13 @@ pub struct PicklsFormatterConfig {
     /// Arguments to pass to `program`. Use "$abspath" wherever the absolute path to the filename should go.
     pub args: Vec<String>,
     /// Whether to use stdin to push the contents of the file to `program` or to rely on the usage
-    /// of "$filename" arg.
+    /// of "$filename" arg. Defaults to true.
     #[serde(default = "default_true")]
     pub use_stdin: bool,
+    /// If `stderr_indicates_error` is true, then if the formatter writes anything to stderr, the
+    /// format run will be considered a failure and aborted. Defaults to false.
+    #[serde(default = "default_false")]
+    pub stderr_indicates_error: bool,
 }
 
 pub fn parse_config(content: &str) -> Result<PicklsConfig> {

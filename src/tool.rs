@@ -305,17 +305,19 @@ pub async fn run_formatter(
     ) {
         (Ok(stdout_len), Ok(stderr_len)) => {
             log::info!("stdout_len = {stdout_len}, stderr_len = {stderr_len}");
-            if stderr_len != 0 {
+            if formatter_config.stderr_indicates_error && stderr_len != 0 {
                 // Writing anything to stderr is considered a formatting failure.
                 log::error!("Failed to format file {uri}: {error_text}");
-                return Err(Error::new("Failed to format file".to_string()));
+                return Err(Error::new("Failed to format file"));
             }
         }
         (Err(err), Err(err2)) => {
             log::error!("Failed to format file {uri}: {err} & {err2}");
+            return Err(Error::new("Failed to format file"));
         }
         (Err(err), _) | (_, Err(err)) => {
             log::error!("Failed to format file {uri}: {err}");
+            return Err(Error::new("Failed to format file"));
         }
     };
 
@@ -324,6 +326,6 @@ pub async fn run_formatter(
         Ok(formatted_content)
     } else {
         log::error!("Failed to format file {uri}");
-        Err(Error::new("Failed to format file".to_string()))
+        Err(Error::new("Failed to format file"))
     }
 }

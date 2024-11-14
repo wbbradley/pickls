@@ -59,7 +59,7 @@ pub(crate) async fn parse_ctags_output(
     let stdout = BufReader::new(
         proc.stdout
             .take()
-            .ok_or_else(|| Error::new("Failed to capture child process stdout".to_string()))?,
+            .ok_or_else(|| Error::new("Failed to capture child process stdout"))?,
     );
     let mut reader = stdout.lines();
     while let Some(line) = reader.next_line().await? {

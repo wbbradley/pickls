@@ -35,9 +35,9 @@ pub struct Error {
 impl Error {
     #[allow(dead_code)]
     #[track_caller]
-    pub fn new(message: String) -> Self {
+    pub fn new(message: impl Into<String>) -> Self {
         Self {
-            message,
+            message: message.into(),
             location: Location::caller(),
         }
     }
