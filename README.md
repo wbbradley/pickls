@@ -172,6 +172,34 @@ languages:
 Note the usage of YAML anchors and references in order to handle different
 language names for the same formats.
 
+### Neovim
+
+Enable `pickls` for all Neovim buffers:
+
+```lua
+vim.api.nvim_create_autocmd({ "BufRead" }, {
+  group = vim.api.nvim_create_augroup("pickls-bufread", { clear = true }),
+  callback = function(_)
+    if vim.fn.executable("pickls") ~= 0 then
+      vim.lsp.start({
+        name = "pickls",
+        cmd = { "pickls", vim.api.nvim_buf_get_name(0) },
+        root_dir = vim.fs.root(0, { ".git", "pyproject.toml", "setup.py", "Cargo.toml", "go.mod" }),
+      }, {
+        bufnr = 0,
+        reuse_client = function(_, _) return false end,
+      })
+    else
+      vim.notify("Pickls executable not found. See pickls-debug-runner for setup instructions.")
+    end
+  end,
+})
+
+vim.api.nvim_create_autocmd("BufWritePre", {
+  callback = function() vim.lsp.buf.format({ bufnr = bufnr }) end
+})
+```
+
 ### Zed
 
 To use `pickls` in Zed, install the
@@ -204,34 +232,6 @@ purposes.
     }
   }
 }
-```
-
-### Neovim
-
-Enable `pickls` for all Neovim buffers:
-
-```lua
-vim.api.nvim_create_autocmd({ "BufRead" }, {
-  group = vim.api.nvim_create_augroup("pickls-bufread", { clear = true }),
-  callback = function(_)
-    if vim.fn.executable("pickls") ~= 0 then
-      vim.lsp.start({
-        name = "pickls",
-        cmd = { "pickls", vim.api.nvim_buf_get_name(0) },
-        root_dir = vim.fs.root(0, { ".git", "pyproject.toml", "setup.py", "Cargo.toml", "go.mod" }),
-      }, {
-        bufnr = 0,
-        reuse_client = function(_, _) return false end,
-      })
-    else
-      vim.notify("Pickls executable not found. See pickls-debug-runner for setup instructions.")
-    end
-  end,
-})
-
-vim.api.nvim_create_autocmd("BufWritePre", {
-  callback = function() vim.lsp.buf.format({ bufnr = bufnr }) end
-})
 ```
 
 ### VSCode
