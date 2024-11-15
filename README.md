@@ -19,7 +19,7 @@ integration.
 - Integrate command-line linting and formatting tools with your IDE.
 - Configure multiple linters and formatters for any language.
 - Ideal for projects with toolchains lacking native LSP integration.
-- Leverages `ctags` on demand to provide workspace symbol information.
+- Leverages [ctags](https://ctags.io/) on demand to provide workspace symbol information.
 
 #### Language Server Protocol - Server Capabilities
 
