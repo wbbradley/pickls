@@ -19,8 +19,8 @@ integration.
 - Integrate command-line linting and formatting tools with your IDE.
 - Configure multiple linters and formatters for any language.
 - Ideal for projects with toolchains lacking native LSP integration.
-- Supports usage of [ctags](https://ctags.io/) on demand to provide workspace symbol information.
-  (See configuration notes below.)
+- Supports usage of [ctags](https://ctags.io/) on demand to provide workspace
+  symbol information. (See configuration notes below.)
 
 #### Language Server Protocol - Server Capabilities
 
@@ -252,8 +252,9 @@ purposes.
 
 ## Troubleshooting
 
-If you encounter issues with `pickls`, please open an issue [here](https://github.com/wbbradley/pickls/issues). When logging an issue, please include the following information:
+If you encounter issues with `pickls`, please open an issue
+[here](https://github.com/wbbradley/pickls/issues). When logging an issue,
+please include the following information:
 
 - How you have configured `pickls` in your editor.
 - Any relevant lines from `"$HOME"/.local/state/pickls/pickls.log`.
-
