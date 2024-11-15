@@ -63,7 +63,6 @@ pub(crate) async fn parse_ctags_output(
     );
     let mut reader = stdout.lines();
     while let Some(line) = reader.next_line().await? {
-        log::info!("line: {line}");
         if symbols.len() >= max_symbols {
             break;
         }

@@ -516,13 +516,13 @@ fn read_config(base_dirs: &xdg::BaseDirectories) -> Option<PicklsConfig> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let base_dirs = xdg::BaseDirectories::with_prefix(env!("CARGO_PKG_NAME")).unwrap();
-    setup_logging(&base_dirs, log::LevelFilter::Info)?;
-    let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map_or(false, |arg| arg == "--version") {
+    if std::env::args().nth(1) == Some("version".to_string()) {
         println!("{}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
+
+    let base_dirs = xdg::BaseDirectories::with_prefix(env!("CARGO_PKG_NAME")).unwrap();
+    setup_logging(&base_dirs, log::LevelFilter::Info)?;
 
     let parent_process_info = fetch_parent_process_info().await;
     log::info!(

@@ -209,7 +209,7 @@ async fn ingest_linter_errors(
     let root_dir = std::path::PathBuf::from(root_dir);
     let realpath_for_uri = std::path::PathBuf::from(uri.path()).canonicalize()?;
     while let Some(line) = reader.next_line().await? {
-        log::info!("line: {line}");
+        // log::info!("line: {line}");
         if let Some(caps) = re.captures(&line) {
             log::info!("caps: {caps:?}");
             if let Some(lsp_diagnostic) =
