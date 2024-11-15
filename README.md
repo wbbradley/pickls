@@ -24,7 +24,7 @@ integration.
 #### Language Server Protocol - Server Capabilities
 
 - `diagnosticProvider`
-  ([spec](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#documentFormattingOptions))
+  ([spec](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#diagnosticOptions))
 - `documentFormattingProvider`
   ([spec](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#documentFormattingOptions))
 - `textDocumentSync`
