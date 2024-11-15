@@ -2,6 +2,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::prelude::*;
+use std::time::Duration;
 
 mod config;
 mod diagnostic;
@@ -404,13 +405,13 @@ impl LanguageServer for PicklsServer {
         &self,
         params: WorkspaceSymbolParams,
     ) -> TowerLspResult<Option<Vec<SymbolInformation>>> {
-        let max_symbols = {
+        let ctags_timeout = {
             let config = &*self.config.lock().await;
-            if config.symbols.is_none() {
+            let Some(symbols_config) = &config.symbols else {
                 log::info!("symbol: not enabled");
                 return Ok(None);
-            }
-            config.symbols.as_ref().unwrap().max_symbols
+            };
+            Duration::from_millis(symbols_config.ctags_timeout_ms)
         };
 
         log::info!(
@@ -441,7 +442,7 @@ impl LanguageServer for PicklsServer {
             .into_iter()
             .map(|s| s.to_string())
             .collect(),
-            max_symbols,
+            ctags_timeout,
         )
         .await
         {

@@ -1,6 +1,6 @@
 use crate::prelude::*;
 
-const MAX_SYMBOLS: usize = 250;
+const DEFAULT_CTAGS_TIMEOUT_MS: u64 = 500;
 
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct PicklsConfig {
@@ -9,15 +9,17 @@ pub struct PicklsConfig {
     pub symbols: Option<PicklsSymbolsConfig>,
 }
 
-fn default_max_symbols() -> usize {
-    MAX_SYMBOLS
+fn default_ctags_timeout_ms() -> u64 {
+    DEFAULT_CTAGS_TIMEOUT_MS
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Deserialize)]
 pub struct PicklsSymbolsConfig {
     pub source: PicklsSymbolsSource,
-    #[serde(default = "default_max_symbols")]
-    pub max_symbols: usize,
+
+    /// How long to wait for ctags to complete before timing out. Defaults to 500ms.
+    #[serde(default = "default_ctags_timeout_ms")]
+    pub ctags_timeout_ms: u64,
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Deserialize)]

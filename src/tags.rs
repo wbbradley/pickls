@@ -1,6 +1,8 @@
 use crate::prelude::*;
 use regex::Regex;
 
+const MAX_CTAGS_SYMBOLS: usize = 10_000_000;
+
 fn parse_multi_regex_query(query: &str) -> Result<Vec<Regex>> {
     let mut regexes: Vec<Regex> = Default::default();
     for regex in query.split_whitespace().map(Regex::new) {
@@ -40,12 +42,13 @@ pub(crate) async fn find_symbols(
     query: &str,
     folders: &Vec<PathBuf>,
     excludes: &Vec<String>,
-    max_symbols: usize,
+    ctags_timeout: Duration,
 ) -> Result<Vec<SymbolInformation>> {
+    let ctags_timeout_after = Instant::now() + ctags_timeout;
     parse_ctags_output(
         parse_multi_regex_query(query)?,
         construct_ctags_command(folders, excludes)?.spawn()?,
-        max_symbols,
+        ctags_timeout_after,
     )
     .await
 }
@@ -53,17 +56,27 @@ pub(crate) async fn find_symbols(
 pub(crate) async fn parse_ctags_output(
     regexes: Vec<Regex>,
     mut proc: tokio::process::Child,
-    max_symbols: usize,
+    ctags_timeout_after: Instant,
 ) -> Result<Vec<SymbolInformation>> {
-    let mut symbols = Vec::with_capacity(max_symbols);
+    let mut symbols = Vec::new();
     let stdout = BufReader::new(
         proc.stdout
             .take()
             .ok_or_else(|| Error::new("Failed to capture child process stdout"))?,
     );
     let mut reader = stdout.lines();
-    while let Some(line) = reader.next_line().await? {
-        if symbols.len() >= max_symbols {
+    loop {
+        let Some(line) = (match timeout_at(ctags_timeout_after, reader.next_line()).await {
+            Ok(Ok(line)) => line,
+            Ok(result @ Err(_)) => result?,
+            Err(_) => {
+                log::warn!("ctags timed out");
+                break;
+            }
+        }) else {
+            break;
+        };
+        if symbols.len() >= MAX_CTAGS_SYMBOLS {
             break;
         }
         // log::info!("parsing ctags line: {line}");
@@ -102,7 +115,6 @@ pub(crate) async fn parse_ctags_output(
             }
         }
     }
-    dbg!(&symbols);
     Ok(symbols)
 }
 
