@@ -55,12 +55,17 @@ cargo install pickls
 Consider using `pickls-debug-runner` to run from source, which is helpful for
 development purposes.
 
-## Configuration
+## User-level Configuration
 
-Configuration lives in `"$XDG_CONFIG_HOME"/pickls/pickls.yaml`.
+User-level configuration lives in `"$XDG_CONFIG_HOME"/pickls/pickls.yaml` (with
+the customary fallback to `"$HOME"/.config/pickls/pickls.yaml`.
 
 Configuration details are available
 [here](https://docs.rs/crate/pickls/latest/source/src/config.rs).
+
+## Project-level Configuration
+
+Project-level configuration is not yet implemented, but is on the roadmap.
 
 ### Example pickls.yaml
 
@@ -248,7 +253,6 @@ purposes.
     }
   }
 }
-```
 
 ## Troubleshooting
 
@@ -258,3 +262,4 @@ please include the following information:
 
 - How you have configured `pickls` in your editor.
 - Any relevant lines from `"$HOME"/.local/state/pickls/pickls.log`.
+```
