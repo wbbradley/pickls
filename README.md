@@ -19,6 +19,18 @@ integration.
 - Integrate command-line linting and formatting tools with your IDE.
 - Configure multiple linters and formatters for any language.
 - Ideal for projects with toolchains lacking native LSP integration.
+- Leverages `ctags` on demand to provide workspace symbol information.
+
+#### Language Server Protocol - Server Capabilities
+
+- `diagnosticProvider`
+  ([spec](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#documentFormattingOptions))
+- `documentFormattingProvider`
+  ([spec](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#documentFormattingOptions))
+- `textDocumentSync`
+  ([spec](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocumentSyncKindA))
+- `workspaceSymbolProvider`
+  ([spec](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#workspaceSymbolOptions))
 
 ## Why Use pickls?
 
