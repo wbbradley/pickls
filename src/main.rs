@@ -158,9 +158,10 @@ type TowerLspResult<T> = tower_lsp::jsonrpc::Result<T>;
 #[tower_lsp::async_trait]
 impl LanguageServer for PicklsServer {
     async fn initialize(&self, params: InitializeParams) -> TowerLspResult<InitializeResult> {
-        log::trace!(
-            "[initialize called [pickls_pid={}, params={params:?}]",
-            std::process::id()
+        log::info!(
+            "[initialize called [pickls_pid={}, params={params}]",
+            std::process::id(),
+            params = serde_json::to_string(&params).unwrap()
         );
         let mut client_info: tokio::sync::MutexGuard<Option<ClientInfo>> =
             self.client_info.lock().await;
@@ -199,6 +200,21 @@ impl LanguageServer for PicklsServer {
                     },
                 )),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                code_action_provider: Some(CodeActionProviderCapability::Options(
+                    CodeActionOptions {
+                        code_action_kinds: Some(vec![CodeActionKind::new("pickls.inline-assist")]),
+                        work_done_progress_options: WorkDoneProgressOptions {
+                            work_done_progress: Some(false),
+                        },
+                        resolve_provider: Some(false),
+                    },
+                )),
+                execute_command_provider: Some(ExecuteCommandOptions {
+                    commands: vec!["pickls.inline-assist".to_string()],
+                    work_done_progress_options: WorkDoneProgressOptions {
+                        work_done_progress: Some(false),
+                    },
+                }),
                 workspace_symbol_provider: if self.config.lock().await.symbols.is_some() {
                     Some(OneOf::Right(WorkspaceSymbolOptions {
                         work_done_progress_options: WorkDoneProgressOptions {
@@ -220,7 +236,28 @@ impl LanguageServer for PicklsServer {
             }),
         })
     }
-
+    async fn code_action(
+        &self,
+        params: CodeActionParams,
+    ) -> TowerLspResult<Option<CodeActionResponse>> {
+        let _ = params;
+        log::info!("Got a textDocument/codeAction request: {params:?}");
+        // Get the text of the document from the document storage.
+        let uri = params.text_document.uri;
+        let (language_id, file_contents) = self.get_document(&uri).await?;
+        // Write a function that takes the file contents and the range from within the params and
+        // returns a slice of the file contents that corresponds to the range.
+        let range: Range = params.range;
+        let file_contents = file_contents.as_ref();
+        let slice = slice_range(file_contents, range);
+        log::info!("Saw selection:\n{slice} [language_id={language_id}]");
+        Ok(None)
+    }
+    async fn execute_command(&self, params: ExecuteCommandParams) -> TowerLspResult<Option<Value>> {
+        let _ = params;
+        log::error!("Got a workspace/executeCommand request, but it is not implemented");
+        Ok(None)
+    }
     async fn formatting(
         &self,
         params: DocumentFormattingParams,

@@ -16,6 +16,7 @@ pub use core::ops::DerefMut;
 pub use nix::unistd::Pid;
 pub use regex::Regex;
 pub use serde::Deserialize;
+pub use serde_json::Value;
 pub use std::borrow::Borrow;
 pub use std::collections::{BTreeSet, HashMap};
 pub use std::fs::read_to_string;
