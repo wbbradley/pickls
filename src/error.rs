@@ -82,6 +82,16 @@ impl From<serde_yml::Error> for Error {
     }
 }
 
+impl From<anyhow::Error> for Error {
+    #[track_caller]
+    fn from(error: anyhow::Error) -> Self {
+        Self {
+            message: format!("anyhow error: {error:?}"),
+            location: Location::caller(),
+        }
+    }
+}
+
 impl From<std::io::Error> for Error {
     #[track_caller]
     fn from(error: std::io::Error) -> Self {

@@ -1,10 +1,8 @@
 // src/main.rs
-#![allow(clippy::too_many_arguments)]
+#![allow(clippy::too_many_arguments, dead_code)]
 
 use crate::prelude::*;
 use allms::{llm_models::OpenAIModels, Completions};
-use handlebars::Handlebars;
-use schemars::JsonSchema;
 use std::time::Duration;
 
 mod config;
@@ -158,6 +156,7 @@ pub struct InlineAssistantResponse {
     pub response: String,
 }
 
+#[allow(dead_code)]
 async fn get_command_output(cmd: &[String]) -> Result<String> {
     let output = Command::new(&cmd[0])
         .args(&cmd[1..])
@@ -274,7 +273,7 @@ impl LanguageServer for PicklsServer {
         log::info!("Got a textDocument/codeAction request: {params:?}");
         // Get the text of the document from the document storage.
         let uri = params.text_document.uri;
-        let (language_id, file_contents) = self.get_document(&uri).await?;
+        let (_language_id, file_contents) = self.get_document(&uri).await?;
         // Write a function that takes the file contents and the range from within the params and
         // returns a slice of the file contents that corresponds to the range.
         let range: Range = params.range;
@@ -285,37 +284,23 @@ impl LanguageServer for PicklsServer {
             log::info!("No selection found, returning early");
             return Ok(None);
         }
-        let context = InlineAssistTemplateContext { language_id, text };
-        let config = self.config.lock().await;
-        let prompt = create_inline_assist_prompt(&config.ai.inline_assist.template, context)
-            .await
-            .ok_or_else(|| TowerLspError {
-                code: TowerLspErrorCode::InvalidParams,
-                message: "Inline assist prompt is not properly configured".into(),
-                data: None,
-            })?;
-        if let Some(_api_key_cmd) = config.ai.openai.as_ref().map(|x| &x.api_key_cmd) {
-            // let api_key = get_command_output(api_key_cmd).await?;
-            let _ = OpenAIModels::Gpt4o;
-            let openai_answer = match Completions::new(
-                OpenAIModels::Gpt4o,
-                "", /*api_key.as_str()*/
-                None,
-                None,
-            )
-            .debug()
-            .get_answer::<InlineAssistantResponse>(&prompt)
-            .await
-            {
-                Ok(answer) => answer,
-                Err(_) => {
-                    return Err(Error::new("Failed to get answer from OpenAI").into());
-                }
-            };
-            println!("openai_answer: {:?}", openai_answer);
-        } else {
-            return Err(Error::new("No API key command found for OpenAI").into());
-        }
+        /* let context = InlineAssistTemplateContext { language_id, text };
+
+         let config = self.config.lock().await;
+         let _prompt = create_inline_assist_prompt(&config.ai.inline_assist.template, context)
+             .await
+             .ok_or_else(|| TowerLspError {
+                 code: TowerLspErrorCode::InvalidParams,
+                 message: "Inline assist prompt is not properly configured".into(),
+                 data: None,
+             })?;
+         let Some(_api_key_cmd) = config.ai.openai.as_ref().map(|x| &x.api_key_cmd) else {
+             return Err(Error::new("No API key command found for OpenAI").into());
+         };
+        */
+        // let api_key = get_command_output(api_key_cmd).await?;
+        // let _openai_answer = fetch_inline_assist_response().await;
+        // println!("openai_answer: {:?}", openai_answer);
         Ok(None)
     }
     async fn execute_command(&self, params: ExecuteCommandParams) -> TowerLspResult<Option<Value>> {
@@ -568,6 +553,20 @@ impl LanguageServer for PicklsServer {
         Ok(Some(symbols))
     }
 }
+
+async fn fetch_inline_assist_response() -> std::result::Result<bool, anyhow::Error> {
+    Completions::new(
+        OpenAIModels::Gpt4o,
+        "", /*api_key.as_str()*/
+        None,
+        None,
+    )
+    .debug()
+    .get_answer::<bool>("hey")
+    .await
+    // Err(Error::new("Failed to get answer"))
+}
+
 async fn update_configuration(
     client: &Client,
     pickls_settings: &Arc<Mutex<PicklsConfig>>,
@@ -623,6 +622,8 @@ async fn main() -> Result<()> {
         println!("{}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
+    let openai_answer: bool = fetch_inline_assist_response().await?;
+    println!("openai_answer: {:?}", openai_answer);
 
     let base_dirs = xdg::BaseDirectories::with_prefix(env!("CARGO_PKG_NAME")).unwrap();
     setup_logging(&base_dirs, log::LevelFilter::Info)?;
