@@ -81,3 +81,26 @@ fn test_slice_range() {
     };
     assert_eq!(slice_range(source, range), "println!");
 }
+
+#[allow(dead_code)]
+pub fn outdent_text(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let min_indent = lines
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.len() - line.trim_start().len())
+        .min()
+        .unwrap_or(0);
+
+    lines
+        .iter()
+        .map(|line| {
+            if line.len() >= min_indent {
+                &line[min_indent..]
+            } else {
+                line
+            }
+        })
+        .collect::<Vec<&str>>()
+        .join("\n")
+}

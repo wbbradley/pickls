@@ -2,8 +2,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::prelude::*;
+use handlebars::Handlebars;
 use std::time::Duration;
-
 mod config;
 mod diagnostic;
 mod diagnostic_severity;
@@ -85,17 +85,13 @@ impl PicklsServer {
         )
     }
 
-    async fn get_document(&self, uri: &Url) -> TowerLspResult<(String, Arc<String>)> {
+    async fn get_document(&self, uri: &Url) -> Result<(String, Arc<String>)> {
         match self.document_storage.lock().await.get(uri).cloned() {
             Some(DocumentStorage {
                 language_id,
                 file_contents,
             }) => Ok((language_id, file_contents)),
-            None => TowerLspResult::Err(tower_lsp::jsonrpc::Error {
-                code: tower_lsp::jsonrpc::ErrorCode::InvalidParams,
-                message: format!("No document found for url '{uri}'").into(),
-                data: None,
-            }),
+            None => Err(Error::new(format!("No document found for url '{uri}'"))),
         }
     }
 
@@ -152,17 +148,56 @@ impl PicklsServer {
         assert!(jobs.insert(job_id, new_jobs).is_none());
         Ok(())
     }
+    async fn do_code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        let _ = params;
+        log::info!("Got a textDocument/codeAction request: {params:?}");
+        // Get the text of the document from the document storage.
+        let uri = params.text_document.uri;
+        let (language_id, file_contents) = self.get_document(&uri).await?;
+        // Write a function that takes the file contents and the range from within the params and
+        // returns a slice of the file contents that corresponds to the range.
+        let range: Range = params.range;
+        let file_contents = file_contents.as_ref();
+        let text = slice_range(file_contents, range);
+        log::info!("Got a selection: {text}");
+        if text.is_empty() {
+            log::info!("No selection found, returning early");
+            return Ok(None);
+        }
+        let context = InlineAssistTemplateContext { language_id, text };
+        log::info!("AAAAAAAAAA");
+        let prompt = self
+            .create_inline_assist_prompt(context)
+            .await
+            .ok_or("Inline assist prompt is not properly configured")?;
+        log::info!("BBBBBBBBBBBBBB");
+        log::info!("Prompting LLM:\n{prompt}");
+        Ok(None)
+    }
+    async fn create_inline_assist_prompt(
+        &self,
+        context: InlineAssistTemplateContext,
+    ) -> Option<String> {
+        let mut reg = Handlebars::new();
+        // Avoid all escaping.
+        reg.register_escape_fn(|x| x.to_string());
+        let config = self.config.lock().await;
+        reg.render_template(&config.ai.inline_assist.template, &context)
+            .ok_or_log("render_template failed")
+    }
 }
 type TowerLspResult<T> = tower_lsp::jsonrpc::Result<T>;
+
+#[derive(Debug, Serialize)]
+struct InlineAssistTemplateContext {
+    language_id: String,
+    text: String,
+}
 
 #[tower_lsp::async_trait]
 impl LanguageServer for PicklsServer {
     async fn initialize(&self, params: InitializeParams) -> TowerLspResult<InitializeResult> {
-        log::info!(
-            "[initialize called [pickls_pid={}, params={params}]",
-            std::process::id(),
-            params = serde_json::to_string(&params).unwrap()
-        );
+        log::info!("[initialize called [pickls_pid={}]", std::process::id(),);
         let mut client_info: tokio::sync::MutexGuard<Option<ClientInfo>> =
             self.client_info.lock().await;
         *client_info.deref_mut() = params.client_info;
@@ -240,18 +275,7 @@ impl LanguageServer for PicklsServer {
         &self,
         params: CodeActionParams,
     ) -> TowerLspResult<Option<CodeActionResponse>> {
-        let _ = params;
-        log::info!("Got a textDocument/codeAction request: {params:?}");
-        // Get the text of the document from the document storage.
-        let uri = params.text_document.uri;
-        let (language_id, file_contents) = self.get_document(&uri).await?;
-        // Write a function that takes the file contents and the range from within the params and
-        // returns a slice of the file contents that corresponds to the range.
-        let range: Range = params.range;
-        let file_contents = file_contents.as_ref();
-        let slice = slice_range(file_contents, range);
-        log::info!("Saw selection:\n{slice} [language_id={language_id}]");
-        Ok(None)
+        Ok(self.do_code_action(params).await?)
     }
     async fn execute_command(&self, params: ExecuteCommandParams) -> TowerLspResult<Option<Value>> {
         let _ = params;

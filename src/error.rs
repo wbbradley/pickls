@@ -1,5 +1,7 @@
 use std::panic::Location;
 
+use handlebars::RenderError;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub(crate) trait Context<T> {
@@ -116,6 +118,25 @@ impl From<&str> for Error {
         Self {
             message: format!("error: {error}"),
             location: Location::caller(),
+        }
+    }
+}
+impl From<RenderError> for Error {
+    #[track_caller]
+    fn from(error: RenderError) -> Self {
+        Self {
+            message: format!("error: {error}"),
+            location: Location::caller(),
+        }
+    }
+}
+
+impl From<Error> for tower_lsp::jsonrpc::Error {
+    fn from(error: Error) -> Self {
+        Self {
+            code: tower_lsp::jsonrpc::ErrorCode::InvalidParams,
+            message: error.message.into(),
+            data: None,
         }
     }
 }
