@@ -31,6 +31,22 @@ pub use tokio::process::Command;
 pub use tokio::sync::Mutex;
 pub use tokio::time::{timeout_at, Instant};
 pub use tower_lsp::lsp_types::notification::*;
-pub use tower_lsp::lsp_types::*;
+pub use tower_lsp::lsp_types::{
+    ClientInfo, CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
+    CodeActionResponse, DiagnosticOptions, DiagnosticServerCapabilities,
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, DocumentFormattingParams, ExecuteCommandOptions,
+    ExecuteCommandParams, FullDocumentDiagnosticReport, InitializeParams, InitializeResult,
+    InitializedParams, Location, MessageType, OneOf, ProgressParams, ProgressParamsValue,
+    ProgressToken, RelatedFullDocumentDiagnosticReport, ServerCapabilities, ServerInfo,
+    SymbolInformation, SymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
+    WorkDoneProgress, WorkDoneProgressEnd, WorkDoneProgressOptions, WorkDoneProgressReport,
+    WorkspaceSymbolOptions, WorkspaceSymbolParams,
+};
+pub type TowerLspResult<T> = tower_lsp::jsonrpc::Result<T>;
+pub type TowerLspError = tower_lsp::jsonrpc::Error;
+pub type TowerLspErrorCode = tower_lsp::jsonrpc::ErrorCode;
+
 pub use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 pub use tower_lsp::{Client, LanguageServer, LspService, Server};

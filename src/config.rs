@@ -46,16 +46,32 @@ impl Default for InlineAssistConfig {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Default)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct OpenAIConfig {
     #[allow(dead_code)]
     /// The OpenAI model to use, (ie: "gpt-4o")
-    model: String,
+    pub model: String,
     #[allow(dead_code)]
     /// The command to run to print the OpenAPI key. (If None, will look at $OPENAI_API_KEY)
-    api_key_cmd: Option<String>,
+    #[serde(default = "default_openai_api_key_cmd")]
+    pub api_key_cmd: Vec<String>,
 }
 
+impl Default for OpenAIConfig {
+    fn default() -> Self {
+        OpenAIConfig {
+            model: "gpt-4o".to_string(),
+            api_key_cmd: default_openai_api_key_cmd(),
+        }
+    }
+}
+
+fn default_openai_api_key_cmd() -> Vec<String> {
+    ["sh", "-c", "echo $OPENAI_API_KEY"]
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect()
+}
 fn default_inline_assist_prompt() -> String {
     "I'm working within a {{language_id}} file, I'd like to do the following:\n\n\
         {{text}}\n"

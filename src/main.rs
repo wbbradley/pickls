@@ -2,8 +2,11 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::prelude::*;
+use allms::{llm_models::OpenAIModels, Completions};
 use handlebars::Handlebars;
+use schemars::JsonSchema;
 use std::time::Duration;
+
 mod config;
 mod diagnostic;
 mod diagnostic_severity;
@@ -148,45 +151,38 @@ impl PicklsServer {
         assert!(jobs.insert(job_id, new_jobs).is_none());
         Ok(())
     }
-    async fn do_code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
-        let _ = params;
-        log::info!("Got a textDocument/codeAction request: {params:?}");
-        // Get the text of the document from the document storage.
-        let uri = params.text_document.uri;
-        let (language_id, file_contents) = self.get_document(&uri).await?;
-        // Write a function that takes the file contents and the range from within the params and
-        // returns a slice of the file contents that corresponds to the range.
-        let range: Range = params.range;
-        let file_contents = file_contents.as_ref();
-        let text = slice_range(file_contents, range);
-        log::info!("Got a selection: {text}");
-        if text.is_empty() {
-            log::info!("No selection found, returning early");
-            return Ok(None);
-        }
-        let context = InlineAssistTemplateContext { language_id, text };
-        log::info!("AAAAAAAAAA");
-        let prompt = self
-            .create_inline_assist_prompt(context)
-            .await
-            .ok_or("Inline assist prompt is not properly configured")?;
-        log::info!("BBBBBBBBBBBBBB");
-        log::info!("Prompting LLM:\n{prompt}");
-        Ok(None)
-    }
-    async fn create_inline_assist_prompt(
-        &self,
-        context: InlineAssistTemplateContext,
-    ) -> Option<String> {
-        let mut reg = Handlebars::new();
-        // Avoid all escaping.
-        reg.register_escape_fn(|x| x.to_string());
-        let config = self.config.lock().await;
-        reg.render_template(&config.ai.inline_assist.template, &context)
-            .ok_or_log("render_template failed")
-    }
 }
-type TowerLspResult<T> = tower_lsp::jsonrpc::Result<T>;
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct InlineAssistantResponse {
+    pub response: String,
+}
+
+async fn get_command_output(cmd: &[String]) -> Result<String> {
+    let output = Command::new(&cmd[0])
+        .args(&cmd[1..])
+        .output()
+        .await
+        .context("Failed to run command")?;
+    if !output.status.success() {
+        return Err(Error::new(format!(
+            "Command failed with status: {status:?}",
+            status = output.status
+        )));
+    }
+    let stdout = String::from_utf8(output.stdout).context("Failed to parse stdout")?;
+    Ok(stdout)
+}
+async fn create_inline_assist_prompt(
+    inline_assist_template: &str,
+    context: InlineAssistTemplateContext,
+) -> Option<String> {
+    let mut reg = Handlebars::new();
+    // Avoid all escaping.
+    reg.register_escape_fn(|x| x.to_string());
+    reg.render_template(inline_assist_template, &context)
+        .ok_or_log("render_template failed")
+}
 
 #[derive(Debug, Serialize)]
 struct InlineAssistTemplateContext {
@@ -275,7 +271,52 @@ impl LanguageServer for PicklsServer {
         &self,
         params: CodeActionParams,
     ) -> TowerLspResult<Option<CodeActionResponse>> {
-        Ok(self.do_code_action(params).await?)
+        log::info!("Got a textDocument/codeAction request: {params:?}");
+        // Get the text of the document from the document storage.
+        let uri = params.text_document.uri;
+        let (language_id, file_contents) = self.get_document(&uri).await?;
+        // Write a function that takes the file contents and the range from within the params and
+        // returns a slice of the file contents that corresponds to the range.
+        let range: Range = params.range;
+        let file_contents = file_contents.as_ref();
+        let text = slice_range(file_contents, range);
+        log::info!("Got a selection: {text}");
+        if text.is_empty() {
+            log::info!("No selection found, returning early");
+            return Ok(None);
+        }
+        let context = InlineAssistTemplateContext { language_id, text };
+        let config = self.config.lock().await;
+        let prompt = create_inline_assist_prompt(&config.ai.inline_assist.template, context)
+            .await
+            .ok_or_else(|| TowerLspError {
+                code: TowerLspErrorCode::InvalidParams,
+                message: "Inline assist prompt is not properly configured".into(),
+                data: None,
+            })?;
+        if let Some(_api_key_cmd) = config.ai.openai.as_ref().map(|x| &x.api_key_cmd) {
+            // let api_key = get_command_output(api_key_cmd).await?;
+            let _ = OpenAIModels::Gpt4o;
+            let openai_answer = match Completions::new(
+                OpenAIModels::Gpt4o,
+                "", /*api_key.as_str()*/
+                None,
+                None,
+            )
+            .debug()
+            .get_answer::<InlineAssistantResponse>(&prompt)
+            .await
+            {
+                Ok(answer) => answer,
+                Err(_) => {
+                    return Err(Error::new("Failed to get answer from OpenAI").into());
+                }
+            };
+            println!("openai_answer: {:?}", openai_answer);
+        } else {
+            return Err(Error::new("No API key command found for OpenAI").into());
+        }
+        Ok(None)
     }
     async fn execute_command(&self, params: ExecuteCommandParams) -> TowerLspResult<Option<Value>> {
         let _ = params;
@@ -333,8 +374,8 @@ impl LanguageServer for PicklsServer {
                 }
                 Err(error) => {
                     log::error!("Formatter error: {:?}", error);
-                    return TowerLspResult::Err(tower_lsp::jsonrpc::Error {
-                        code: tower_lsp::jsonrpc::ErrorCode::InvalidParams,
+                    return TowerLspResult::Err(TowerLspError {
+                        code: TowerLspErrorCode::InvalidParams,
                         message: format!("Formatter failed for url '{uri}' [formatter={program}]")
                             .into(),
                         data: None,
@@ -510,8 +551,8 @@ impl LanguageServer for PicklsServer {
             Ok(symbols) => symbols,
             Err(error) => {
                 log::error!("symbol: error: {error:?}");
-                return TowerLspResult::Err(tower_lsp::jsonrpc::Error {
-                    code: tower_lsp::jsonrpc::ErrorCode::InvalidParams,
+                return TowerLspResult::Err(TowerLspError {
+                    code: TowerLspErrorCode::InvalidParams,
                     message: format!("workspace_symbol failed for query '{query}'").into(),
                     data: None,
                 });
