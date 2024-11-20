@@ -1,8 +1,7 @@
 // src/main.rs
-#![allow(clippy::too_many_arguments, dead_code)]
+#![allow(clippy::too_many_arguments)]
 
 use crate::prelude::*;
-use allms::{llm_models::OpenAIModels, Completions};
 use std::time::Duration;
 
 mod config;
@@ -149,44 +148,6 @@ impl PicklsServer {
         assert!(jobs.insert(job_id, new_jobs).is_none());
         Ok(())
     }
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct InlineAssistantResponse {
-    pub response: String,
-}
-
-#[allow(dead_code)]
-async fn get_command_output(cmd: &[String]) -> Result<String> {
-    let output = Command::new(&cmd[0])
-        .args(&cmd[1..])
-        .output()
-        .await
-        .context("Failed to run command")?;
-    if !output.status.success() {
-        return Err(Error::new(format!(
-            "Command failed with status: {status:?}",
-            status = output.status
-        )));
-    }
-    let stdout = String::from_utf8(output.stdout).context("Failed to parse stdout")?;
-    Ok(stdout)
-}
-async fn create_inline_assist_prompt(
-    inline_assist_template: &str,
-    context: InlineAssistTemplateContext,
-) -> Option<String> {
-    let mut reg = Handlebars::new();
-    // Avoid all escaping.
-    reg.register_escape_fn(|x| x.to_string());
-    reg.render_template(inline_assist_template, &context)
-        .ok_or_log("render_template failed")
-}
-
-#[derive(Debug, Serialize)]
-struct InlineAssistTemplateContext {
-    language_id: String,
-    text: String,
 }
 
 #[tower_lsp::async_trait]
@@ -554,19 +515,6 @@ impl LanguageServer for PicklsServer {
     }
 }
 
-async fn fetch_inline_assist_response() -> std::result::Result<bool, anyhow::Error> {
-    Completions::new(
-        OpenAIModels::Gpt4o,
-        "", /*api_key.as_str()*/
-        None,
-        None,
-    )
-    .debug()
-    .get_answer::<bool>("hey")
-    .await
-    // Err(Error::new("Failed to get answer"))
-}
-
 async fn update_configuration(
     client: &Client,
     pickls_settings: &Arc<Mutex<PicklsConfig>>,
@@ -622,8 +570,6 @@ async fn main() -> Result<()> {
         println!("{}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
-    let openai_answer: bool = fetch_inline_assist_response().await?;
-    println!("openai_answer: {:?}", openai_answer);
 
     let base_dirs = xdg::BaseDirectories::with_prefix(env!("CARGO_PKG_NAME")).unwrap();
     setup_logging(&base_dirs, log::LevelFilter::Info)?;

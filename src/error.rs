@@ -1,7 +1,5 @@
 use std::panic::Location;
 
-use handlebars::RenderError;
-
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub(crate) trait Context<T> {
@@ -82,16 +80,6 @@ impl From<serde_yml::Error> for Error {
     }
 }
 
-impl From<anyhow::Error> for Error {
-    #[track_caller]
-    fn from(error: anyhow::Error) -> Self {
-        Self {
-            message: format!("anyhow error: {error:?}"),
-            location: Location::caller(),
-        }
-    }
-}
-
 impl From<std::io::Error> for Error {
     #[track_caller]
     fn from(error: std::io::Error) -> Self {
@@ -125,15 +113,6 @@ impl From<String> for Error {
 impl From<&str> for Error {
     #[track_caller]
     fn from(error: &str) -> Self {
-        Self {
-            message: format!("error: {error}"),
-            location: Location::caller(),
-        }
-    }
-}
-impl From<RenderError> for Error {
-    #[track_caller]
-    fn from(error: RenderError) -> Self {
         Self {
             message: format!("error: {error}"),
             location: Location::caller(),

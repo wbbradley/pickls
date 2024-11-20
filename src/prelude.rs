@@ -15,7 +15,7 @@ pub(crate) use crate::workspace::*;
 pub use core::ops::DerefMut;
 pub use nix::unistd::Pid;
 pub use regex::Regex;
-pub use serde::{Deserialize, Serialize};
+pub use serde::Deserialize;
 pub use serde_json::Value;
 pub use std::borrow::Borrow;
 pub use std::collections::{BTreeSet, HashMap};
