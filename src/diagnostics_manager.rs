@@ -3,13 +3,13 @@ use crate::prelude::*;
 pub(crate) type LinterName = String;
 pub(crate) type DiagnosticsStorage = HashMap<Uri, DocumentDiagnostics>;
 
-pub(crate) struct DiagnosticsManager<'a> {
-    client: Client<'a>,
+pub(crate) struct DiagnosticsManager {
+    client: Client,
     diagnostics_storage: DiagnosticsStorage,
 }
 
-impl<'a> DiagnosticsManager<'a> {
-    pub(crate) fn new(client: Client<'a>) -> Self {
+impl DiagnosticsManager {
+    pub(crate) fn new(client: Client) -> Self {
         Self {
             client,
             diagnostics_storage: Default::default(),

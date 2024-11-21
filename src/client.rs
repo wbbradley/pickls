@@ -1,3 +1,4 @@
+#![allow(unused)]
 use crate::prelude::*;
 use std::io::Write;
 
@@ -27,12 +28,13 @@ impl Client {
     }
     pub fn write_response(&self, response: &serde_json::Value) -> Result<()> {
         let response_text = serde_json::to_string(response).unwrap();
+        let mut w = self.stdout.borrow_mut();
         write!(
-            self.stdout.borrow_mut(),
+            w,
             "Content-Length: {}\r\n\r\n{}",
             response_text.len(),
             response_text
         )?;
-        Ok(self.stdout.flush()?)
+        Ok(w.flush()?)
     }
 }

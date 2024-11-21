@@ -24,27 +24,27 @@ mod tool;
 mod utils;
 mod workspace;
 
-struct PicklsBackend<'a> {
-    client: Client<'a>,
+struct PicklsBackend {
+    client: Client,
     client_info: Option<ClientInfo>,
 
     workspace: Workspace,
     jobs: HashMap<JobId, Vec<Job>>,
     document_storage: HashMap<Uri, DocumentStorage>,
     config: PicklsConfig,
-    diagnostics_manager: DiagnosticsManager<'a>,
+    diagnostics_manager: DiagnosticsManager,
 }
 
-impl<'a> PicklsBackend<'a> {
-    pub fn new(client: Client<'a>, config: PicklsConfig) -> Self {
+impl PicklsBackend {
+    pub fn new(client: Client, config: PicklsConfig) -> Self {
         Self {
-            client,
             workspace: Workspace::new(),
             config,
             jobs: Default::default(),
             client_info: None,
             document_storage: Default::default(),
-            diagnostics_manager: DiagnosticsManager::new(client),
+            diagnostics_manager: DiagnosticsManager::new(client.clone()),
+            client,
         }
     }
 
@@ -150,7 +150,7 @@ impl<'a> PicklsBackend<'a> {
     }
 }
 
-impl<'a> LanguageServer for PicklsBackend<'a> {
+impl LanguageServer for PicklsBackend {
     fn initialize(&mut self, params: InitializeParams) -> Result<InitializeResult> {
         log::info!("[initialize called [pickls_pid={}]", std::process::id(),);
         self.client_info = params.client_info;
@@ -295,7 +295,7 @@ impl<'a> LanguageServer for PicklsBackend<'a> {
                 &language_config.root_markers,
                 file_contents,
                 uri.clone(),
-            ).map(|formatted_content| {
+            ).inspect(|formatted_content|   {
                     log::info!(
                         "Formatter {program} succeeded for url '{uri}' [formatted_len={formatted_len}, formatter={program}]",
                         uri = uri.as_str(),
@@ -309,7 +309,6 @@ impl<'a> LanguageServer for PicklsBackend<'a> {
                         },
                         new_text: formatted_content.clone(),
                     });
-                    formatted_content
                 }).context("formatter error")?;
         }
 

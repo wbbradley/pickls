@@ -28,6 +28,7 @@ where
             let msg: serde_json::Value = serde_json::from_str(json).unwrap();
             buf.clear();
 
+            eprintln!("Received: {:#?}", msg);
             if let Some(id) = msg.get("id").and_then(|i| i.as_i64()) {
                 if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
                     log::info!("Received method: {}", method);
@@ -41,7 +42,17 @@ where
                                 "id": id,
                                 "result": result,
                             });
-                            client.write_response(&response);
+                            client.write_response(&response)?;
+                        }
+                        Shutdown::METHOD => {
+                            let response = json!({
+                                "jsonrpc": "2.0",
+                                "id": id,
+                                "result": (),
+                            });
+                            client.write_response(&response)?;
+                            backend.shutdown()?;
+                            break;
                         }
                         _ => {}
                     }
