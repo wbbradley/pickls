@@ -509,8 +509,8 @@ fn main() -> Result<()> {
         "pickls started; pid={pid}; parent_process_info={parent_process_info}",
         pid = nix::unistd::getpid()
     );
-    let config = read_config(&base_dirs);
+    let config = read_config(&base_dirs).unwrap_or_default();
 
     // Initialize the configuration's site name.
-    run_server(|client| PicklsBackend::new(client, config.unwrap_or_default()))
+    run_server(|client| PicklsBackend::new(client, config))
 }

@@ -1,4 +1,4 @@
-use std::panic::Location;
+use std::{num::ParseIntError, panic::Location};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -115,6 +115,16 @@ impl From<&str> for Error {
     fn from(error: &str) -> Self {
         Self {
             message: format!("error: {error}"),
+            location: Location::caller(),
+        }
+    }
+}
+
+impl From<ParseIntError> for Error {
+    #[track_caller]
+    fn from(error: ParseIntError) -> Self {
+        Self {
+            message: format!("parse int error: {error:?}"),
             location: Location::caller(),
         }
     }
