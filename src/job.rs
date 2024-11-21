@@ -1,7 +1,7 @@
 use crate::prelude::*;
 
 #[derive(Debug, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
-pub struct JobId(pub Url);
+pub struct JobId(pub Uri);
 
 impl std::fmt::Display for JobId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -17,7 +17,7 @@ impl From<&JobSpec> for JobId {
 
 #[derive(Clone, Debug)]
 pub struct JobSpec {
-    pub uri: Url,
+    pub uri: Uri,
     pub version: DocumentVersion,
     pub language_id: String,
     pub text: Arc<String>,
@@ -29,17 +29,15 @@ pub struct Job {
 
 impl Job {
     pub fn spawn_kill(self) {
-        tokio::spawn(async move {
-            // NOTE: Because we called process_group on the subprocess, its pid == its pgid.
-            log::info!("killing job [pgid={pid}]", pid = self.pid);
-            let errno =
-                Errno::from(unsafe { nix::libc::killpg(self.pid.as_raw(), nix::libc::SIGKILL) });
-            if errno.is_error() {
-                log::warn!(
-                    "failed to kill job [pid={pid}, error={errno}]",
-                    pid = self.pid
-                );
-            }
-        });
+        // NOTE: Because we called process_group on the subprocess, its pid == its pgid.
+        log::info!("killing job [pgid={pid}]", pid = self.pid);
+        let errno =
+            Errno::from(unsafe { nix::libc::killpg(self.pid.as_raw(), nix::libc::SIGKILL) });
+        if errno.is_error() {
+            log::warn!(
+                "failed to kill job [pid={pid}, error={errno}]",
+                pid = self.pid
+            );
+        }
     }
 }

@@ -1,5 +1,6 @@
 use crate::prelude::*;
 use regex::Regex;
+use std::io::{BufRead, BufReader};
 
 const MAX_CTAGS_SYMBOLS: usize = 10_000_000;
 
@@ -13,8 +14,7 @@ fn parse_multi_regex_query(query: &str) -> Result<Vec<Regex>> {
 }
 fn construct_ctags_command(folders: &Vec<PathBuf>, excludes: &Vec<String>) -> Result<Command> {
     let mut cmd = Command::new("ctags");
-    cmd.kill_on_drop(true)
-        .stdout(std::process::Stdio::piped())
+    cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());
     cmd.arg("--options=NONE")
         .arg("--fields=+K")
@@ -38,7 +38,7 @@ fn construct_ctags_command(folders: &Vec<PathBuf>, excludes: &Vec<String>) -> Re
     Ok(cmd)
 }
 
-pub(crate) async fn find_symbols(
+pub(crate) fn find_symbols(
     query: &str,
     folders: &Vec<PathBuf>,
     excludes: &Vec<String>,
@@ -50,12 +50,11 @@ pub(crate) async fn find_symbols(
         construct_ctags_command(folders, excludes)?.spawn()?,
         ctags_timeout_after,
     )
-    .await
 }
 
-pub(crate) async fn parse_ctags_output(
+pub(crate) fn parse_ctags_output(
     regexes: Vec<Regex>,
-    mut proc: tokio::process::Child,
+    mut proc: std::process::Child,
     ctags_timeout_after: Instant,
 ) -> Result<Vec<SymbolInformation>> {
     let mut symbols = Vec::new();
@@ -64,18 +63,13 @@ pub(crate) async fn parse_ctags_output(
             .take()
             .ok_or_else(|| Error::new("Failed to capture child process stdout"))?,
     );
-    let mut reader = stdout.lines();
-    loop {
-        let Some(line) = (match timeout_at(ctags_timeout_after, reader.next_line()).await {
-            Ok(Ok(line)) => line,
-            Ok(result @ Err(_)) => result?,
-            Err(_) => {
-                log::warn!("ctags timed out");
-                break;
-            }
-        }) else {
+    let mut reader = BufReader::new(stdout);
+    for line in reader.lines() {
+        let line = line?;
+        if Instant::now() > ctags_timeout_after {
+            log::warn!("ctags timed out");
             break;
-        };
+        }
         if symbols.len() >= MAX_CTAGS_SYMBOLS {
             break;
         }
@@ -89,7 +83,7 @@ pub(crate) async fn parse_ctags_output(
             continue;
         }
         if let Ok(path) = PathBuf::from(path).canonicalize() {
-            if let Ok(uri) = Url::from_file_path(path) {
+            if let Some(Ok(uri)) = path.to_str().map(serde_json::from_str) {
                 #[allow(deprecated)]
                 let symbol = SymbolInformation {
                     name: tag.to_string(),

@@ -1,8 +1,8 @@
+use lsp_types::Range;
 use std::process;
 pub use sysinfo::{Pid, System};
-use tower_lsp::lsp_types::Range;
 
-pub async fn fetch_parent_process_info() -> String {
+pub fn fetch_parent_process_info() -> String {
     let mut system = System::new_all();
     system.refresh_all();
 
@@ -51,7 +51,7 @@ pub fn slice_range(source: &str, range: Range) -> String {
 
 #[test]
 fn test_slice_range() {
-    use tower_lsp::lsp_types::Position;
+    use lsp_types::Position;
     assert_eq!(
         "bcdef\ndh",
         slice_range(
@@ -70,11 +70,11 @@ fn test_slice_range() {
     );
     let source = "fn main() {\n    println!(\"Hello, world!\");\n}\n";
     let range = Range {
-        start: tower_lsp::lsp_types::Position {
+        start: Position {
             line: 1,
             character: 4,
         },
-        end: tower_lsp::lsp_types::Position {
+        end: Position {
             line: 1,
             character: 12,
         },

@@ -2,14 +2,14 @@ use crate::prelude::*;
 
 pub(crate) struct DocumentDiagnostics {
     #[allow(dead_code)]
-    pub(crate) uri: Url,
+    pub(crate) uri: Uri,
     pub(crate) max_linter_count: usize,
     pub(crate) linter_diagnostics: HashMap<LinterName, Vec<Diagnostic>>,
     pub(crate) versions: BTreeSet<DocumentVersion>,
 }
 
 impl DocumentDiagnostics {
-    pub(crate) fn new(uri: Url, max_linter_count: usize, version: DocumentVersion) -> Self {
+    pub(crate) fn new(uri: Uri, max_linter_count: usize, version: DocumentVersion) -> Self {
         Self {
             uri,
             max_linter_count,
@@ -22,16 +22,16 @@ impl DocumentDiagnostics {
 impl DocumentDiagnostics {
     /// Push new diagnostics for a particular uri, linter, and version. This is called
     /// after a linter has finished running.
-    pub(crate) async fn update_diagnostics_storage(
+    pub(crate) fn update_diagnostics_storage(
         &mut self,
-        uri: &Url,
+        uri: &Uri,
         linter_name: &str,
         version: DocumentVersion,
         mut new_diagnostics: Vec<Diagnostic>,
     ) -> bool {
         let max_version = self.versions.last().cloned().unwrap_or(version);
         if max_version > version {
-            log::info!("ignoring diagnostics for version {version} of {uri} from linter {linter_name} because it is older than the most recent version {max_version}");
+            log::info!("ignoring diagnostics for version {version} of {uri} from linter {linter_name} because it is older than the most recent version {max_version}", uri=uri.as_str());
             return false;
         }
         if version > max_version {
@@ -49,10 +49,10 @@ impl DocumentDiagnostics {
         true
     }
 
-    pub(crate) async fn aggregate_most_recent_diagnostics(
+    pub(crate) fn aggregate_most_recent_diagnostics(
         &mut self,
-        uri: Url,
-    ) -> (Url, DocumentVersion, Vec<Diagnostic>, Vec<ProgressParams>) {
+        uri: Uri,
+    ) -> (Uri, DocumentVersion, Vec<Diagnostic>, Vec<ProgressParams>) {
         let max_version = *self.versions.last().unwrap();
         let available = self.linter_diagnostics.len();
         let mut progress_messages = vec![
@@ -82,7 +82,7 @@ impl DocumentDiagnostics {
     }
 }
 fn make_progress_params(
-    uri: Url,
+    uri: Uri,
     version: DocumentVersion,
     available: usize,
     expected: usize,
@@ -92,7 +92,7 @@ fn make_progress_params(
     } else {
         Some((available as f64 / expected as f64 * 100.0) as u32)
     };
-    log::info!("publishing progress [uri={uri}, version={version}, available={available}, expected={expected}, percentage={percentage:?}]");
+    log::info!("publishing progress [uri={uri}, version={version}, available={available}, expected={expected}, percentage={percentage:?}]", uri=uri.as_str());
 
     ProgressParams {
         token: progress_token(&uri, version),
@@ -109,6 +109,6 @@ fn make_progress_params(
     }
 }
 
-fn progress_token(uri: &Url, version: DocumentVersion) -> ProgressToken {
-    ProgressToken::String(format!("{}:{}", uri, version))
+fn progress_token(uri: &Uri, version: DocumentVersion) -> ProgressToken {
+    ProgressToken::String(format!("{}:{}", uri.as_str(), version))
 }

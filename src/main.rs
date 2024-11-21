@@ -2,8 +2,10 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::prelude::*;
-use std::time::Duration;
+#[macro_use]
+extern crate serde_json;
 
+mod client;
 mod config;
 mod diagnostic;
 mod diagnostic_severity;
@@ -14,42 +16,44 @@ mod document_version;
 mod errno;
 mod error;
 mod job;
+mod language_server;
 mod prelude;
+mod server;
 mod tags;
 mod tool;
 mod utils;
 mod workspace;
 
-struct PicklsServer {
-    client: Client,
-    client_info: Arc<Mutex<Option<ClientInfo>>>,
+struct PicklsBackend<'a> {
+    client: &'a Client,
+    client_info: Option<ClientInfo>,
 
-    workspace: Arc<Mutex<Workspace>>,
-    jobs: Arc<Mutex<HashMap<JobId, Vec<Job>>>>,
-    document_storage: Arc<Mutex<HashMap<Url, DocumentStorage>>>,
-    config: Arc<Mutex<PicklsConfig>>,
-    diagnostics_manager: DiagnosticsManager,
+    workspace: Workspace,
+    jobs: HashMap<JobId, Vec<Job>>,
+    document_storage: HashMap<Uri, DocumentStorage>,
+    config: PicklsConfig,
+    diagnostics_manager: DiagnosticsManager<'a>,
 }
 
-impl PicklsServer {
-    pub fn new(client: Client, config: PicklsConfig) -> Self {
+impl<'a> PicklsBackend<'a> {
+    pub fn new(client: &'a Client, config: PicklsConfig) -> Self {
         Self {
-            client: client.clone(),
-            client_info: Arc::new(Mutex::new(None)),
-            workspace: Arc::new(Mutex::new(Workspace::new())),
-            config: Arc::new(Mutex::new(config)),
-            jobs: Arc::new(Mutex::new(Default::default())),
-            document_storage: Arc::new(Mutex::new(Default::default())),
-            diagnostics_manager: DiagnosticsManager::new(client),
+            client,
+            workspace: Workspace::new(),
+            config,
+            jobs: Default::default(),
+            client_info: None,
+            document_storage: Default::default(),
+            diagnostics_manager: DiagnosticsManager::new(&client),
         }
     }
 
-    async fn fetch_language_config(&self, language_id: &str) -> Option<PicklsLanguageConfig> {
-        self.config.lock().await.languages.get(language_id).cloned()
+    fn fetch_language_config(&self, language_id: &str) -> Option<PicklsLanguageConfig> {
+        self.config.languages.get(language_id).cloned()
     }
 
-    async fn get_client_name(&self) -> String {
-        if let Some(client_info) = self.client_info.lock().await.as_ref() {
+    fn get_client_name(&self) -> String {
+        if let Some(client_info) = self.client_info.as_ref() {
             format!(
                 "{}{}{}",
                 client_info.name,
@@ -65,18 +69,16 @@ impl PicklsServer {
         }
     }
 
-    async fn get_workspace_name(&self) -> String {
+    fn get_workspace_name(&self) -> String {
         let name = self
             .workspace
-            .lock()
-            .await
             .folders()
             .filter_map(|folder| folder.file_name().map(|x| x.to_string_lossy()))
             .collect::<Vec<_>>()
             .join(", ");
         format!(
             "{client_name}({workspace_name})",
-            client_name = self.get_client_name().await,
+            client_name = self.get_client_name(),
             workspace_name = if name.is_empty() {
                 "<unknown>"
             } else {
@@ -85,21 +87,21 @@ impl PicklsServer {
         )
     }
 
-    async fn get_document(&self, uri: &Url) -> Result<(String, Arc<String>)> {
-        match self.document_storage.lock().await.get(uri).cloned() {
-            Some(DocumentStorage {
-                language_id,
-                file_contents,
-            }) => Ok((language_id, file_contents)),
-            None => Err(Error::new(format!("No document found for url '{uri}'"))),
+    fn get_document(&self, uri: &Uri) -> Result<DocumentStorage> {
+        match self.document_storage.get(uri).cloned() {
+            Some(ds) => Ok(ds),
+            None => Err(Error::new(format!(
+                "No document found for url '{uri}'",
+                uri = uri.as_str()
+            ))),
         }
     }
 
-    async fn run_diagnostics(&self, job_spec: JobSpec) -> Result<()> {
+    fn run_diagnostics(&mut self, job_spec: JobSpec) -> Result<()> {
         // Get a copy of the tool configuration for future use. Bail out if we
         // can't find it, this just means that the user doesn't want us to
         // run diagnostics for this language.
-        let Some(language_config) = self.fetch_language_config(&job_spec.language_id).await else {
+        let Some(language_config) = self.fetch_language_config(&job_spec.language_id) else {
             log::trace!(
                 "no language config found for language_id={language_id}, skipping",
                 language_id = job_spec.language_id
@@ -108,11 +110,10 @@ impl PicklsServer {
         };
 
         // Lock the jobs structure while we manipulate it.
-        let mut jobs = self.jobs.lock().await;
 
         let job_id = JobId::from(&job_spec);
         // Get rid of a prior running jobs.
-        if let Some(jobs) = jobs.remove(&job_id) {
+        if let Some(jobs) = self.jobs.remove(&job_id) {
             for job in jobs {
                 job.spawn_kill();
             }
@@ -130,50 +131,47 @@ impl PicklsServer {
                 None
             };
             let pid: Pid = run_linter(
-                self.diagnostics_manager.clone(),
+                &mut self.diagnostics_manager,
                 linter_config,
-                self.workspace.lock().await.borrow(),
+                &self.workspace,
                 &language_config.root_markers,
                 max_linter_count,
                 file_content,
                 job_spec.uri.clone(),
                 job_spec.version,
-            )
-            .await?;
-            debug_assert!(!jobs.contains_key(&job_id));
+            )?;
+            debug_assert!(!self.jobs.contains_key(&job_id));
             new_jobs.push(Job { pid });
         }
 
         // Remember which jobs we started.
-        assert!(jobs.insert(job_id, new_jobs).is_none());
+        assert!(self.jobs.insert(job_id, new_jobs).is_none());
         Ok(())
     }
 }
 
-#[tower_lsp::async_trait]
-impl LanguageServer for PicklsServer {
-    async fn initialize(&self, params: InitializeParams) -> TowerLspResult<InitializeResult> {
+impl<'a> LanguageServer for PicklsBackend<'a> {
+    fn initialize(&mut self, params: InitializeParams) -> Result<InitializeResult> {
         log::info!("[initialize called [pickls_pid={}]", std::process::id(),);
-        let mut client_info: tokio::sync::MutexGuard<Option<ClientInfo>> =
-            self.client_info.lock().await;
-        *client_info.deref_mut() = params.client_info;
+        let client_info = &mut self.client_info;
+        *client_info = params.client_info;
         if let (Some(workspace_folders), ref mut workspace) =
-            (params.workspace_folders, self.workspace.lock().await)
+            (params.workspace_folders, self.workspace)
         {
             for workspace_folder in workspace_folders {
                 log::info!(
                     "adding folder: [name='{name}', uri='{uri}']",
                     name = workspace_folder.name,
-                    uri = workspace_folder.uri
+                    uri = workspace_folder.uri.as_str()
                 );
                 workspace.add_folder(workspace_folder.uri);
             }
         };
         if let Some(initialization_options) = params.initialization_options {
             log::info!(
-                "[PicklsServer] initialize updating configuration [{initialization_options:?}]",
+                "[PicklsBackend] initialize updating configuration [{initialization_options:?}]",
             );
-            update_configuration(&self.client, &self.config, initialization_options).await;
+            update_configuration(&self.client, &self.config, initialization_options);
         }
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -206,7 +204,7 @@ impl LanguageServer for PicklsServer {
                         work_done_progress: Some(false),
                     },
                 }),
-                workspace_symbol_provider: if self.config.lock().await.symbols.is_some() {
+                workspace_symbol_provider: if self.config.symbols.is_some() {
                     Some(OneOf::Right(WorkspaceSymbolOptions {
                         work_done_progress_options: WorkDoneProgressOptions {
                             // We don't support reporting progress for workspace symbols. Would probably need to be a heuristic.
@@ -227,14 +225,14 @@ impl LanguageServer for PicklsServer {
             }),
         })
     }
-    async fn code_action(
-        &self,
-        params: CodeActionParams,
-    ) -> TowerLspResult<Option<CodeActionResponse>> {
+    fn code_action(&mut self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         log::info!("Got a textDocument/codeAction request: {params:?}");
         // Get the text of the document from the document storage.
         let uri = params.text_document.uri;
-        let (_language_id, file_contents) = self.get_document(&uri).await?;
+        let DocumentStorage {
+            language_id: _language_id,
+            file_contents,
+        } = self.get_document(&uri)?;
         // Write a function that takes the file contents and the range from within the params and
         // returns a slice of the file contents that corresponds to the range.
         let range: Range = params.range;
@@ -247,10 +245,10 @@ impl LanguageServer for PicklsServer {
         }
         /* let context = InlineAssistTemplateContext { language_id, text };
 
-         let config = self.config.lock().await;
+         let config = self.config.lock();
          let _prompt = create_inline_assist_prompt(&config.ai.inline_assist.template, context)
-             .await
-             .ok_or_else(|| TowerLspError {
+
+             .ok_or_else(|| Error {
                  code: TowerLspErrorCode::InvalidParams,
                  message: "Inline assist prompt is not properly configured".into(),
                  data: None,
@@ -259,26 +257,25 @@ impl LanguageServer for PicklsServer {
              return Err(Error::new("No API key command found for OpenAI").into());
          };
         */
-        // let api_key = get_command_output(api_key_cmd).await?;
-        // let _openai_answer = fetch_inline_assist_response().await;
+        // let api_key = get_command_output(api_key_cmd)?;
+        // let _openai_answer = fetch_inline_assist_response();
         // println!("openai_answer: {:?}", openai_answer);
         Ok(None)
     }
-    async fn execute_command(&self, params: ExecuteCommandParams) -> TowerLspResult<Option<Value>> {
+    fn execute_command(&mut self, params: ExecuteCommandParams) -> Result<Option<Value>> {
         let _ = params;
         log::error!("Got a workspace/executeCommand request, but it is not implemented");
         Ok(None)
     }
-    async fn formatting(
-        &self,
-        params: DocumentFormattingParams,
-    ) -> TowerLspResult<Option<Vec<TextEdit>>> {
+    fn formatting(&mut self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         log::info!("[formatting] called");
 
         let uri = params.text_document.uri;
-        let (language_id, file_contents) = self.get_document(&uri).await?;
-        let mut file_contents = file_contents.as_ref().clone();
-        let language_config = match self.fetch_language_config(&language_id).await {
+        let DocumentStorage {
+            file_contents,
+            language_id,
+        } = self.get_document(&uri)?;
+        let language_config = match self.fetch_language_config(&language_id) {
             Some(config) => config,
             None => {
                 log::info!("No language config found for language ID {:?}", language_id);
@@ -290,22 +287,21 @@ impl LanguageServer for PicklsServer {
         let mut edit: Option<TextEdit> = None;
         log::info!(
             "Formatting file '{uri}' with {count} formatters",
+            uri = uri.as_str(),
             count = language_config.formatters.len()
         );
-        for formatter_config in language_config.formatters {
+        for formatter_config in language_config.formatters.iter() {
             let program = formatter_config.program.clone();
-            file_contents = match run_formatter(
+            file_contents = run_formatter(
                 formatter_config,
-                self.workspace.lock().await.borrow(),
+                &self.workspace,
                 &language_config.root_markers,
                 file_contents,
                 uri.clone(),
-            )
-            .await
-            {
-                Ok(formatted_content) => {
+            ).map(|formatted_content| {
                     log::info!(
                         "Formatter {program} succeeded for url '{uri}' [formatted_len={formatted_len}, formatter={program}]",
+                        uri = uri.as_str(),
                         formatted_len = formatted_content.len(),
                     );
                     // Create a TextEdit that replaces the whole document
@@ -317,33 +313,22 @@ impl LanguageServer for PicklsServer {
                         new_text: formatted_content.clone(),
                     });
                     formatted_content
-                }
-                Err(error) => {
-                    log::error!("Formatter error: {:?}", error);
-                    return TowerLspResult::Err(TowerLspError {
-                        code: TowerLspErrorCode::InvalidParams,
-                        message: format!("Formatter failed for url '{uri}' [formatter={program}]")
-                            .into(),
-                        data: None,
-                    });
-                }
-            };
+                }).context("formatter error")?;
         }
 
         Ok(edit.map(|edit| vec![edit]))
     }
 
-    async fn initialized(&self, _: InitializedParams) {
+    fn initialized(&mut self, _: InitializedParams) {
         log::info!(
             "[{site}] initialized called",
-            site = self.get_workspace_name().await
+            site = self.get_workspace_name()
         );
         self.client
-            .log_message(MessageType::INFO, "pickls Server initialized")
-            .await;
+            .log_message(MessageType::INFO, "pickls Server initialized");
     }
 
-    async fn did_change_configuration(&self, dccp: DidChangeConfigurationParams) {
+    fn did_change_configuration(&mut self, dccp: DidChangeConfigurationParams) {
         if dccp.settings.is_null() {
             return;
         }
@@ -352,71 +337,60 @@ impl LanguageServer for PicklsServer {
                 return;
             }
         }
-        update_configuration(&self.client, &self.config, dccp.settings).await;
+        update_configuration(&self.client, &self.config, dccp.settings);
     }
 
-    async fn shutdown(&self) -> TowerLspResult<()> {
-        log::info!(
-            "[{site}] shutdown called",
-            site = self.get_workspace_name().await
-        );
+    fn shutdown(&self) -> Result<()> {
+        log::info!("[{site}] shutdown called", site = self.get_workspace_name());
         Ok(())
     }
 
-    async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        self.document_storage
-            .lock()
-            .await
-            .remove(&params.text_document.uri);
+    fn did_close(&mut self, params: DidCloseTextDocumentParams) {
+        self.document_storage.remove(&params.text_document.uri);
         log::info!(
             "[{site}] did_close called [params=...]",
-            site = self.get_workspace_name().await
+            site = self.get_workspace_name()
         );
     }
-    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+    fn did_open(&mut self, params: DidOpenTextDocumentParams) {
         log::info!(
             "[{site}] did_open called [language_id={language_id}, params=...]",
-            site = self.get_workspace_name().await,
+            site = self.get_workspace_name(),
             language_id = params.text_document.language_id
         );
-        let file_contents = Arc::new(params.text_document.text);
-        self.document_storage.lock().await.insert(
+        let file_contents = params.text_document.text;
+        self.document_storage.insert(
             params.text_document.uri.clone(),
             DocumentStorage {
                 language_id: params.text_document.language_id.clone(),
                 file_contents: file_contents.clone(),
             },
         );
-        if let Err(error) = self
-            .run_diagnostics(JobSpec {
-                uri: params.text_document.uri,
-                version: DocumentVersion(params.text_document.version),
-                language_id: params.text_document.language_id,
-                text: file_contents,
-            })
-            .await
-        {
+        if let Err(error) = self.run_diagnostics(JobSpec {
+            uri: params.text_document.uri,
+            version: DocumentVersion(params.text_document.version),
+            language_id: params.text_document.language_id,
+            text: file_contents,
+        }) {
             log::error!("did_open: {error:?}");
         }
     }
-    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
+    fn did_change(&mut self, mut params: DidChangeTextDocumentParams) {
         log::trace!(
             "[{site}] did_change called [params=...]",
-            site = self.get_workspace_name().await
+            site = self.get_workspace_name()
         );
         assert!(params.content_changes.len() == 1);
-        let file_contents = Arc::new(params.content_changes.remove(0).text);
+        let file_contents = params.content_changes.remove(0).text;
         let uri = params.text_document.uri;
 
         let language_id = {
-            let mut document_storage_map = self.document_storage.lock().await;
+            let mut document_storage_map = self.document_storage;
             let Some(document_storage) = document_storage_map.get_mut(&uri) else {
-                self.client
-                    .log_message(
-                        MessageType::WARNING,
-                        format!("no document found for uri {uri}"),
-                    )
-                    .await;
+                self.client.log_message(
+                    MessageType::WARNING,
+                    format!("no document found for uri {uri}", uri = uri.as_str()),
+                );
                 return;
             };
 
@@ -425,36 +399,18 @@ impl LanguageServer for PicklsServer {
             document_storage.language_id.clone()
         };
 
-        if let Err(error) = self
-            .run_diagnostics(JobSpec {
-                uri,
-                version: DocumentVersion(params.text_document.version),
-                language_id,
-                text: file_contents,
-            })
-            .await
-        {
+        if let Err(error) = self.run_diagnostics(JobSpec {
+            uri,
+            version: DocumentVersion(params.text_document.version),
+            language_id,
+            text: file_contents,
+        }) {
             log::warn!("did_change: {error:?}");
         }
     }
-    async fn diagnostic(
-        &self,
-        _params: DocumentDiagnosticParams,
-    ) -> TowerLspResult<DocumentDiagnosticReportResult> {
-        log::trace!("[diagnostic] called");
-        Ok(DocumentDiagnosticReportResult::Report(
-            DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
-                related_documents: None,
-                full_document_diagnostic_report: FullDocumentDiagnosticReport::default(),
-            }),
-        ))
-    }
-    async fn symbol(
-        &self,
-        params: WorkspaceSymbolParams,
-    ) -> TowerLspResult<Option<Vec<SymbolInformation>>> {
+    fn symbol(&mut self, params: WorkspaceSymbolParams) -> Result<Option<Vec<SymbolInformation>>> {
         let ctags_timeout = {
-            let config = &*self.config.lock().await;
+            let config = &self.config;
             let Some(symbols_config) = &config.symbols else {
                 log::info!("symbol: not enabled");
                 return Ok(None);
@@ -467,16 +423,9 @@ impl LanguageServer for PicklsServer {
             params.query,
             std::env::current_dir().unwrap().display()
         );
-        let folders = self
-            .workspace
-            .lock()
-            .await
-            .borrow()
-            .folders()
-            .cloned()
-            .collect::<Vec<_>>();
+        let folders = self.workspace.folders().cloned().collect::<Vec<_>>();
         let query = params.query;
-        let symbols = match find_symbols(
+        let symbols = find_symbols(
             &query,
             &folders,
             &vec![
@@ -492,18 +441,7 @@ impl LanguageServer for PicklsServer {
             .collect(),
             ctags_timeout,
         )
-        .await
-        {
-            Ok(symbols) => symbols,
-            Err(error) => {
-                log::error!("symbol: error: {error:?}");
-                return TowerLspResult::Err(TowerLspError {
-                    code: TowerLspErrorCode::InvalidParams,
-                    message: format!("workspace_symbol failed for query '{query}'").into(),
-                    data: None,
-                });
-            }
-        };
+        .context("failed to find symbols")?;
 
         if symbols.is_empty() {
             log::info!("found no symbols");
@@ -515,25 +453,23 @@ impl LanguageServer for PicklsServer {
     }
 }
 
-async fn update_configuration(
+fn update_configuration(
     client: &Client,
-    pickls_settings: &Arc<Mutex<PicklsConfig>>,
+    pickls_settings: &PicklsConfig,
     settings: serde_json::Value,
 ) {
     match serde_json::from_value::<PicklsConfig>(settings) {
         Ok(settings) => {
-            *pickls_settings.lock().await = settings.clone();
-            client
-                .log_message(
-                    MessageType::INFO,
-                    format!("configuration changed [config={settings:?}]!"),
-                )
-                .await;
+            *pickls_settings.lock() = settings.clone();
+            client.log_message(
+                MessageType::INFO,
+                format!("configuration changed [config={settings:?}]!"),
+            );
         }
         Err(error) => {
             let message = format!("invalid pickls configuration [{error}]");
             log::warn!("{}", message);
-            client.log_message(MessageType::WARNING, message).await;
+            client.log_message(MessageType::WARNING, message);
         }
     }
 }
@@ -564,8 +500,7 @@ fn read_config(base_dirs: &xdg::BaseDirectories) -> Option<PicklsConfig> {
     config
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     if std::env::args().nth(1) == Some("version".to_string()) {
         println!("{}", env!("CARGO_PKG_VERSION"));
         return Ok(());
@@ -574,7 +509,7 @@ async fn main() -> Result<()> {
     let base_dirs = xdg::BaseDirectories::with_prefix(env!("CARGO_PKG_NAME")).unwrap();
     setup_logging(&base_dirs, log::LevelFilter::Info)?;
 
-    let parent_process_info = fetch_parent_process_info().await;
+    let parent_process_info = fetch_parent_process_info();
     log::info!(
         "pickls started; pid={pid}; parent_process_info={parent_process_info}",
         pid = nix::unistd::getpid()
@@ -582,10 +517,5 @@ async fn main() -> Result<()> {
     let config = read_config(&base_dirs);
 
     // Initialize the configuration's site name.
-    let (service, socket) =
-        LspService::build(|client| PicklsServer::new(client, config.unwrap_or_default())).finish();
-    Server::new(io::stdin(), io::stdout(), socket)
-        .serve(service)
-        .await;
-    Ok(())
+    run_server(|client| PicklsBackend::new(client, config.unwrap_or_default()))
 }

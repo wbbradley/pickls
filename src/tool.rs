@@ -2,6 +2,8 @@ use regex::Captures;
 
 use crate::prelude::*;
 use nix::unistd::Pid;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::os::unix::process::CommandExt as _;
 
 fn get_root_dir(filename: &str, workspace: &Workspace, root_markers: &[String]) -> Result<String> {
     let starting_path = std::path::PathBuf::from(filename);
@@ -34,21 +36,18 @@ fn get_root_dir(filename: &str, workspace: &Workspace, root_markers: &[String]) 
     Ok(basedir)
 }
 
-pub async fn run_linter(
-    diagnostics_manager: DiagnosticsManager,
+pub fn run_linter(
+    diagnostics_manager: &mut DiagnosticsManager,
     linter_config: PicklsLinterConfig,
     workspace: &Workspace,
     root_markers: &[String],
     max_linter_count: usize,
-    file_content: Option<Arc<String>>,
-    uri: Url,
+    file_content: Option<String>,
+    uri: Uri,
     version: DocumentVersion,
 ) -> Result<Pid> {
     let (mut cmd, root_dir) = {
-        let filename = uri
-            .to_file_path()
-            .map_err(|()| "invalid file path passed to run_linter")?;
-        let filename = filename.to_str().unwrap();
+        let filename = uri.path().as_str();
 
         let mut cmd = Command::new(&linter_config.program);
         let mut args = linter_config.args.clone();
@@ -76,7 +75,7 @@ pub async fn run_linter(
     log::info!("spawning {cmd:?}...");
     let mut child = cmd.spawn()?;
 
-    let mut stdin: tokio::process::ChildStdin = child.stdin.take().expect("Failed to open stdin");
+    let mut stdin: std::process::ChildStdin = child.stdin.take().expect("Failed to open stdin");
 
     if linter_config.use_stdin {
         if let Some(file_content) = file_content {
@@ -86,39 +85,35 @@ pub async fn run_linter(
                 preamble = String::from(&file_content[..std::cmp::min(file_content.len(), 20)])
                     .replace("\n", "\\n")
             );
-            stdin.write_all(file_content.as_bytes()).await?;
+            stdin.write_all(file_content.as_bytes())?;
         }
     }
 
-    let child_pid = Pid::from_raw(child.id().unwrap() as i32);
-    tokio::spawn(async move {
-        // TODO: maybe box these to enable vtbl-style polymorphism here.
-        if let Err(error) = if linter_config.use_stderr {
-            ingest_linter_errors(
-                uri,
-                version,
-                diagnostics_manager.clone(),
-                &root_dir,
-                max_linter_count,
-                linter_config,
-                BufReader::new(child.stderr.take().expect("Failed to take stderr")),
-            )
-            .await
-        } else {
-            ingest_linter_errors(
-                uri,
-                version,
-                diagnostics_manager.clone(),
-                &root_dir,
-                max_linter_count,
-                linter_config,
-                BufReader::new(child.stdout.take().expect("Failed to take stdout")),
-            )
-            .await
-        } {
-            log::error!("[run_linter/spawn-ingest] error: {error:?}");
-        }
-    });
+    let child_pid = Pid::from_raw(child.id() as i32);
+    // TODO: maybe box these to enable vtbl-style polymorphism here.
+    if let Err(error) = if linter_config.use_stderr {
+        ingest_linter_errors(
+            uri,
+            version,
+            diagnostics_manager,
+            &root_dir,
+            max_linter_count,
+            linter_config,
+            BufReader::new(child.stderr.take().expect("Failed to take stderr")),
+        )
+    } else {
+        ingest_linter_errors(
+            uri,
+            version,
+            diagnostics_manager,
+            &root_dir,
+            max_linter_count,
+            linter_config,
+            BufReader::new(child.stdout.take().expect("Failed to take stdout")),
+        )
+    } {
+        log::error!("[run_linter/spawn-ingest] error: {error:?}");
+    }
     Ok(child_pid)
 }
 
@@ -188,14 +183,14 @@ fn convert_capture_to_diagnostic(
     })
 }
 
-async fn ingest_linter_errors(
-    uri: Url,
+fn ingest_linter_errors(
+    uri: Uri,
     version: DocumentVersion,
-    mut diagnostics_manager: DiagnosticsManager,
+    diagnostics_manager: &mut DiagnosticsManager,
     root_dir: &str,
     max_linter_count: usize,
     linter_config: PicklsLinterConfig,
-    child_stdout: impl AsyncBufReadExt + Unpin,
+    child_stdout: BufReader<impl Read>,
 ) -> Result<()> {
     let re = Regex::new(&linter_config.pattern).map_err(|e| {
         format!(
@@ -203,18 +198,21 @@ async fn ingest_linter_errors(
             pattern = linter_config.pattern
         )
     })?;
-    let mut reader = child_stdout.lines();
     let mut lsp_diagnostics: Vec<Diagnostic> = Default::default();
     let mut prior_line: Option<String> = None;
     let root_dir = std::path::PathBuf::from(root_dir);
-    let realpath_for_uri = std::path::PathBuf::from(uri.path()).canonicalize()?;
-    while let Some(line) = reader.next_line().await? {
+    let realpath_for_uri = std::path::PathBuf::from(uri.path().as_str()).canonicalize()?;
+    for line in child_stdout.lines() {
+        let line = line?;
         // log::info!("line: {line}");
         if let Some(caps) = re.captures(&line) {
             log::info!("caps: {caps:?}");
-            if let Some(lsp_diagnostic) =
-                convert_capture_to_diagnostic(uri.path(), &linter_config, caps, &prior_line)
-            {
+            if let Some(lsp_diagnostic) = convert_capture_to_diagnostic(
+                uri.path().as_str(),
+                &linter_config,
+                caps,
+                &prior_line,
+            ) {
                 let mut path = std::path::PathBuf::from(lsp_diagnostic.filename.clone());
                 if path.is_relative() {
                     path = root_dir.join(path);
@@ -224,7 +222,8 @@ async fn ingest_linter_errors(
                     lsp_diagnostics.push(lsp_diagnostic.into());
                 } else {
                     log::warn!(
-                        "ignoring diagnostic for {uri} because it is not in the current document [filename={realpath_for_diagnostic:?}]"
+                        "ignoring diagnostic for {uri} because it is not in the current document [filename={realpath_for_diagnostic:?}]",
+                        uri=uri.as_str(),
                     );
                 }
             }
@@ -240,31 +239,26 @@ async fn ingest_linter_errors(
     // TODO: track errors from other documents. For now this is out of reach
     // beacuse we don't have the current version of the other document
     // readily available.
-    diagnostics_manager
-        .update_diagnostics(
-            uri.clone(),
-            // Url::from_file_path(filename.as_str()).unwrap(),
-            linter_config.program.clone(),
-            max_linter_count,
-            version,
-            lsp_diagnostics,
-        )
-        .await;
+    diagnostics_manager.update_diagnostics(
+        uri.clone(),
+        // Uri::from_file_path(filename.as_str()).unwrap(),
+        linter_config.program.clone(),
+        max_linter_count,
+        version,
+        lsp_diagnostics,
+    );
     Ok(())
 }
 
-pub async fn run_formatter(
-    formatter_config: PicklsFormatterConfig,
+pub fn run_formatter(
+    formatter_config: &PicklsFormatterConfig,
     workspace: &Workspace,
     root_markers: &[String],
     file_content: String,
-    uri: Url,
+    uri: Uri,
 ) -> Result<String> {
     let mut cmd = {
-        let filename = uri
-            .to_file_path()
-            .map_err(|()| "invalid file path passed to run_formatter")?;
-        let filename = filename.to_str().unwrap();
+        let filename = uri.path().as_str();
 
         let mut cmd = Command::new(&formatter_config.program);
         let mut args = formatter_config.args.clone();
@@ -282,7 +276,6 @@ pub async fn run_formatter(
         }
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
-        cmd.kill_on_drop(true);
         cmd
     };
 
@@ -293,39 +286,45 @@ pub async fn run_formatter(
 
     if formatter_config.use_stdin {
         let mut stdin = child.stdin.take().expect("Failed to open stdin");
-        stdin.write_all(file_content.as_bytes()).await?;
+        stdin.write_all(file_content.as_bytes())?;
     }
 
     let mut formatted_content = String::new();
     let mut error_text = String::new();
 
-    match tokio::join!(
+    match (
         stdout.read_to_string(&mut formatted_content),
-        stderr.read_to_string(&mut error_text)
+        stderr.read_to_string(&mut error_text),
     ) {
         (Ok(stdout_len), Ok(stderr_len)) => {
             log::info!("stdout_len = {stdout_len}, stderr_len = {stderr_len}");
             if formatter_config.stderr_indicates_error && stderr_len != 0 {
                 // Writing anything to stderr is considered a formatting failure.
-                log::error!("Failed to format file {uri}: {error_text}");
+                log::error!(
+                    "Failed to format file {uri}: {error_text}",
+                    uri = uri.as_str()
+                );
                 return Err(Error::new("Failed to format file"));
             }
         }
         (Err(err), Err(err2)) => {
-            log::error!("Failed to format file {uri}: {err} & {err2}");
+            log::error!(
+                "Failed to format file {uri}: {err} & {err2}",
+                uri = uri.as_str()
+            );
             return Err(Error::new("Failed to format file"));
         }
         (Err(err), _) | (_, Err(err)) => {
-            log::error!("Failed to format file {uri}: {err}");
+            log::error!("Failed to format file {uri}: {err}", uri = uri.as_str());
             return Err(Error::new("Failed to format file"));
         }
     };
 
-    let exit_status = child.wait().await?;
+    let exit_status = child.wait()?;
     if exit_status.success() {
         Ok(formatted_content)
     } else {
-        log::error!("Failed to format file {uri}");
+        log::error!("Failed to format file {uri}", uri = uri.as_str());
         Err(Error::new("Failed to format file"))
     }
 }

@@ -1,9 +1,8 @@
 use crate::prelude::*;
-use tower_lsp::lsp_types::Url;
 
 pub(crate) struct Workspace {
     folders: BTreeSet<PathBuf>,
-    unused_folders: BTreeSet<Url>,
+    unused_folders: BTreeSet<Uri>,
 }
 
 impl Workspace {
@@ -13,7 +12,7 @@ impl Workspace {
             unused_folders: Default::default(),
         }
     }
-    pub(crate) fn add_folder(&mut self, folder: Url) {
+    pub(crate) fn add_folder(&mut self, folder: Uri) {
         if folder.scheme() == "file" {
             if let Ok(file_path) = folder.to_file_path() {
                 self.folders.insert(file_path);
