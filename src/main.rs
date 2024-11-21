@@ -25,7 +25,7 @@ mod utils;
 mod workspace;
 
 struct PicklsBackend<'a> {
-    client: &'a Client,
+    client: Client<'a>,
     client_info: Option<ClientInfo>,
 
     workspace: Workspace,
@@ -36,7 +36,7 @@ struct PicklsBackend<'a> {
 }
 
 impl<'a> PicklsBackend<'a> {
-    pub fn new(client: &'a Client, config: PicklsConfig) -> Self {
+    pub fn new(client: Client<'a>, config: PicklsConfig) -> Self {
         Self {
             client,
             workspace: Workspace::new(),
@@ -44,7 +44,7 @@ impl<'a> PicklsBackend<'a> {
             jobs: Default::default(),
             client_info: None,
             document_storage: Default::default(),
-            diagnostics_manager: DiagnosticsManager::new(&client),
+            diagnostics_manager: DiagnosticsManager::new(client),
         }
     }
 
@@ -153,25 +153,22 @@ impl<'a> PicklsBackend<'a> {
 impl<'a> LanguageServer for PicklsBackend<'a> {
     fn initialize(&mut self, params: InitializeParams) -> Result<InitializeResult> {
         log::info!("[initialize called [pickls_pid={}]", std::process::id(),);
-        let client_info = &mut self.client_info;
-        *client_info = params.client_info;
-        if let (Some(workspace_folders), ref mut workspace) =
-            (params.workspace_folders, self.workspace)
-        {
+        self.client_info = params.client_info;
+        if let Some(workspace_folders) = params.workspace_folders {
             for workspace_folder in workspace_folders {
                 log::info!(
                     "adding folder: [name='{name}', uri='{uri}']",
                     name = workspace_folder.name,
                     uri = workspace_folder.uri.as_str()
                 );
-                workspace.add_folder(workspace_folder.uri);
+                self.workspace.add_folder(workspace_folder.uri);
             }
         };
         if let Some(initialization_options) = params.initialization_options {
             log::info!(
                 "[PicklsBackend] initialize updating configuration [{initialization_options:?}]",
             );
-            update_configuration(&self.client, &self.config, initialization_options);
+            update_configuration(&self.client, &mut self.config, initialization_options);
         }
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -272,7 +269,7 @@ impl<'a> LanguageServer for PicklsBackend<'a> {
 
         let uri = params.text_document.uri;
         let DocumentStorage {
-            file_contents,
+            mut file_contents,
             language_id,
         } = self.get_document(&uri)?;
         let language_config = match self.fetch_language_config(&language_id) {
@@ -337,7 +334,7 @@ impl<'a> LanguageServer for PicklsBackend<'a> {
                 return;
             }
         }
-        update_configuration(&self.client, &self.config, dccp.settings);
+        update_configuration(&self.client, &mut self.config, dccp.settings);
     }
 
     fn shutdown(&self) -> Result<()> {
@@ -385,8 +382,7 @@ impl<'a> LanguageServer for PicklsBackend<'a> {
         let uri = params.text_document.uri;
 
         let language_id = {
-            let mut document_storage_map = self.document_storage;
-            let Some(document_storage) = document_storage_map.get_mut(&uri) else {
+            let Some(document_storage) = self.document_storage.get_mut(&uri) else {
                 self.client.log_message(
                     MessageType::WARNING,
                     format!("no document found for uri {uri}", uri = uri.as_str()),
@@ -455,16 +451,16 @@ impl<'a> LanguageServer for PicklsBackend<'a> {
 
 fn update_configuration(
     client: &Client,
-    pickls_settings: &PicklsConfig,
+    pickls_settings: &mut PicklsConfig,
     settings: serde_json::Value,
 ) {
     match serde_json::from_value::<PicklsConfig>(settings) {
         Ok(settings) => {
-            *pickls_settings.lock() = settings.clone();
             client.log_message(
                 MessageType::INFO,
                 format!("configuration changed [config={settings:?}]!"),
             );
+            *pickls_settings = settings;
         }
         Err(error) => {
             let message = format!("invalid pickls configuration [{error}]");

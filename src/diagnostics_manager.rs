@@ -4,12 +4,12 @@ pub(crate) type LinterName = String;
 pub(crate) type DiagnosticsStorage = HashMap<Uri, DocumentDiagnostics>;
 
 pub(crate) struct DiagnosticsManager<'a> {
-    client: &'a Client,
+    client: Client<'a>,
     diagnostics_storage: DiagnosticsStorage,
 }
 
 impl<'a> DiagnosticsManager<'a> {
-    pub(crate) fn new(client: &'a Client) -> Self {
+    pub(crate) fn new(client: Client<'a>) -> Self {
         Self {
             client,
             diagnostics_storage: Default::default(),
@@ -26,15 +26,15 @@ impl<'a> DiagnosticsManager<'a> {
         version: DocumentVersion,
         new_diagnostics: Vec<Diagnostic>,
     ) {
-        let mut storage = self.diagnostics_storage;
-        if !storage.contains_key(&uri) {
-            storage.insert(
+        if !self.diagnostics_storage.contains_key(&uri) {
+            self.diagnostics_storage.insert(
                 uri.clone(),
                 DocumentDiagnostics::new(uri.clone(), max_linter_count, version),
             );
         }
 
-        let document_diagnostics: &mut DocumentDiagnostics = storage.get_mut(&uri).unwrap();
+        let document_diagnostics: &mut DocumentDiagnostics =
+            self.diagnostics_storage.get_mut(&uri).unwrap();
         if document_diagnostics.update_diagnostics_storage(
             &uri,
             &linter_name,
@@ -48,13 +48,15 @@ impl<'a> DiagnosticsManager<'a> {
                 document_diagnostics.aggregate_most_recent_diagnostics(uri);
             log::info!(
                 "publishing diagnostics [linter={linter_name}, uri={uri}, version={version}, count={count}]",
+                uri = uri.as_str(),
                 count = diagnostics.len()
             );
             self.client
                 .publish_diagnostics(uri.clone(), diagnostics, Some(version.0));
 
-            for progress_message in progress_messages.into_iter() {
-                self.client.send_notification::<Progress>(progress_message)
+            for _progress_message in progress_messages.into_iter() {
+                // TODO
+                // self.client.send_notification::<Progress>(progress_message);
             }
         }
     }

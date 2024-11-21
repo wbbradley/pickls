@@ -119,13 +119,3 @@ impl From<&str> for Error {
         }
     }
 }
-
-impl From<Error> for tower_lsp::jsonrpc::Error {
-    fn from(error: Error) -> Self {
-        Self {
-            code: tower_lsp::jsonrpc::ErrorCode::InvalidParams,
-            message: error.message.into(),
-            data: None,
-        }
-    }
-}

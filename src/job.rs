@@ -20,7 +20,7 @@ pub struct JobSpec {
     pub uri: Uri,
     pub version: DocumentVersion,
     pub language_id: String,
-    pub text: Arc<String>,
+    pub text: String,
 }
 
 pub struct Job {

@@ -13,11 +13,10 @@ impl Workspace {
         }
     }
     pub(crate) fn add_folder(&mut self, folder: Uri) {
-        if folder.scheme() == "file" {
-            if let Ok(file_path) = folder.to_file_path() {
-                self.folders.insert(file_path);
-                return;
-            }
+        if folder.scheme().map_or(false, |x| x.as_str() == "file") {
+            let file_path = PathBuf::from(folder.path().as_str());
+            self.folders.insert(file_path);
+            return;
         }
         self.unused_folders.insert(folder);
     }

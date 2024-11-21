@@ -63,8 +63,7 @@ pub(crate) fn parse_ctags_output(
             .take()
             .ok_or_else(|| Error::new("Failed to capture child process stdout"))?,
     );
-    let mut reader = BufReader::new(stdout);
-    for line in reader.lines() {
+    for line in BufReader::new(stdout).lines() {
         let line = line?;
         if Instant::now() > ctags_timeout_after {
             log::warn!("ctags timed out");

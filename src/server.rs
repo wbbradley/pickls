@@ -1,17 +1,18 @@
 use crate::prelude::*;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 
 use lsp_types::request::*;
 
-pub fn run_server<'a, F, T: LanguageServer>(f: F) -> Result<()>
+pub fn run_server<F, T>(f: F) -> Result<()>
 where
-    F: FnOnce(&Client) -> T,
+    F: FnOnce(Client) -> T,
+    T: LanguageServer,
 {
     let stdin = std::io::stdin();
-    let stdout = std::io::stdout();
-    let client = Client::new(stdin.lock());
+    let stdout = Rc::new(RefCell::new(std::io::stdout().lock()));
+    let client = Client::new(stdout);
     let mut buf = String::new();
-    let backend = f(&client);
+    let mut backend = f(client.clone());
     log::info!("Server is running");
 
     for line in BufReader::new(stdin.lock()).lines() {
@@ -29,17 +30,18 @@ where
 
             if let Some(id) = msg.get("id").and_then(|i| i.as_i64()) {
                 if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
+                    log::info!("Received method: {}", method);
                     match method {
                         Initialize::METHOD => {
-                            let params: InitializeParams =
-                                serde_json::from_value(msg["params"].clone()).unwrap();
-                            let result = backend.initialize(params);
+                            let f = msg.get("params").cloned().unwrap();
+                            let params: InitializeParams = serde_json::from_value(f).unwrap();
+                            let result = backend.initialize(params)?;
                             let response = json!({
                                 "jsonrpc": "2.0",
                                 "id": id,
                                 "result": result,
                             });
-                            write_response(&mut stdout, &response);
+                            client.write_response(&response);
                         }
                         _ => {}
                     }
@@ -48,20 +50,10 @@ where
                 if method == DidOpenTextDocument::METHOD {
                     let params: DidOpenTextDocumentParams =
                         serde_json::from_value(msg["params"].clone()).unwrap();
-                    backend.handle_did_open_document(params);
+                    backend.did_open(params);
                 }
             }
         }
     }
-}
-
-fn write_response<W: Write>(writer: &mut W, response: &serde_json::Value) -> Result<()> {
-    let response_text = serde_json::to_string(response).unwrap();
-    write!(
-        writer,
-        "Content-Length: {}\r\n\r\n{}",
-        response_text.len(),
-        response_text
-    )?;
-    Ok(writer.flush()?)
+    Ok(())
 }
