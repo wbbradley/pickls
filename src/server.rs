@@ -13,43 +13,53 @@ where
     // let mut read_buf = [0i8; 4096];
     let mut backend = f(client.clone());
     log::info!("Server is running");
-    for json in parse_lsp(stdin.lock()) {
-        let msg = json.context("Error parsing JSON")?;
-        eprintln!("Received message: {:#?}", msg);
-        if let Some(id) = msg.get("id").and_then(|i| i.as_i64()) {
-            if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
-                log::info!("Received method: {}", method);
-                match method {
-                    Initialize::METHOD => {
-                        let f = msg.get("params").cloned().unwrap();
-                        let params: InitializeParams = serde_json::from_value(f).unwrap();
-                        let result = backend.initialize(params)?;
-                        let response = json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "result": result,
-                        });
-                        client.write_response(&response)?;
-                    }
-                    Shutdown::METHOD => {
-                        let response = json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "result": (),
-                        });
-                        client.write_response(&response)?;
-                        backend.shutdown()?;
-                        break;
-                    }
-                    _ => {}
-                }
+    for rpc in parse_json_rpc(stdin.lock()) {
+        let rpc = rpc.context("Error parsing JSON")?;
+        log::info!("Received message: {:#?}", rpc);
+        // This is a Request.
+        log::info!("Received id: {:?}", rpc.id);
+        log::info!("Received method: {}", rpc.method);
+        let id = rpc.id.clone();
+        match rpc.method.as_str() {
+            Initialize::METHOD => {
+                client.write_response(id, backend.initialize(rpc.take_params()?)?)?;
             }
-        } else if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
-            if method == DidOpenTextDocument::METHOD {
-                let params: DidOpenTextDocumentParams =
-                    serde_json::from_value(msg["params"].clone()).unwrap();
-                backend.did_open(params);
+            Initialized::METHOD => {
+                backend.initialized(rpc.take_params()?);
             }
+            SetTrace::METHOD => {
+                backend.set_trace(rpc.take_params()?);
+            }
+            WorkspaceSymbolRequest::METHOD => {
+                client.write_response(id, backend.workspace_symbol(rpc.take_params()?)?)?;
+            }
+            ExecuteCommand::METHOD => {
+                client.write_response(id, backend.execute_command(rpc.take_params()?)?)?;
+            }
+            CodeActionRequest::METHOD => {
+                client.write_response(id, backend.code_action(rpc.take_params()?)?)?;
+            }
+            DidChangeTextDocument::METHOD => {
+                backend.did_change(rpc.take_params()?);
+            }
+            DidChangeConfiguration::METHOD => {
+                backend.did_change_configuration(rpc.take_params()?);
+            }
+            DidOpenTextDocument::METHOD => {
+                backend.did_open(rpc.take_params()?);
+            }
+            DidCloseTextDocument::METHOD => {
+                backend.did_close(rpc.take_params()?);
+            }
+            Formatting::METHOD => {
+                client.write_response(id, backend.formatting(rpc.take_params()?)?)?;
+            }
+            Shutdown::METHOD => {
+                client.write_response(id, backend.shutdown()?)?;
+                log::info!("Shutting down");
+                break;
+            }
+            _ => {}
         }
     }
     Ok(())

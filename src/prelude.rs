@@ -19,6 +19,7 @@ pub use lsp_types::notification::*;
 pub use lsp_types::*;
 pub use nix::unistd::Pid;
 pub use regex::Regex;
+pub use serde::de::DeserializeOwned;
 pub use serde::{Deserialize, Serialize};
 pub use serde_json::Value;
 pub use std::collections::{BTreeSet, HashMap};

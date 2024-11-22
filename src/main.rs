@@ -2,8 +2,6 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::prelude::*;
-#[macro_use]
-extern crate serde_json;
 
 mod client;
 mod config;
@@ -152,7 +150,7 @@ impl PicklsBackend {
 
 impl LanguageServer for PicklsBackend {
     fn initialize(&mut self, params: InitializeParams) -> Result<InitializeResult> {
-        log::info!("[initialize called [pickls_pid={}]", std::process::id(),);
+        log::info!("[initialize called [pickls_pid={}]", std::process::id());
         self.client_info = params.client_info;
         if let Some(workspace_folders) = params.workspace_folders {
             for workspace_folder in workspace_folders {
@@ -403,7 +401,10 @@ impl LanguageServer for PicklsBackend {
             log::warn!("did_change: {error:?}");
         }
     }
-    fn symbol(&mut self, params: WorkspaceSymbolParams) -> Result<Option<Vec<SymbolInformation>>> {
+    fn workspace_symbol(
+        &mut self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<Vec<SymbolInformation>>> {
         let ctags_timeout = {
             let config = &self.config;
             let Some(symbols_config) = &config.symbols else {

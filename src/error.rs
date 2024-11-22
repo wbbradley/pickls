@@ -80,6 +80,15 @@ impl From<serde_yml::Error> for Error {
     }
 }
 
+impl From<serde_json::Error> for Error {
+    fn from(error: serde_json::Error) -> Self {
+        Self {
+            message: format!("json error: {error:?}"),
+            location: Location::caller(),
+        }
+    }
+}
+
 impl From<std::io::Error> for Error {
     #[track_caller]
     fn from(error: std::io::Error) -> Self {

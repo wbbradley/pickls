@@ -26,8 +26,14 @@ impl Client {
     ) {
         panic!()
     }
-    pub fn write_response(&self, response: &serde_json::Value) -> Result<()> {
-        let response_text = serde_json::to_string(response).unwrap();
+    pub fn write_response<T: Serialize>(&self, id: Option<MessageId>, result: T) -> Result<()> {
+        let Some(id) = id else {
+            return Err(Error::new(format!(
+                "missing id for response ({})",
+                std::any::type_name::<T>()
+            )));
+        };
+        let response_text = serde_json::to_string(&JsonRpcResponse::response(id, result)).unwrap();
         let mut w = self.stdout.borrow_mut();
         write!(
             w,
