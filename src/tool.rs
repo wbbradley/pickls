@@ -88,6 +88,7 @@ pub fn run_linter(
             stdin.write_all(file_content.as_bytes())?;
         }
     }
+    drop(stdin);
 
     let child_pid = Pid::from_raw(child.id() as i32);
     // TODO: maybe box these to enable vtbl-style polymorphism here.
@@ -246,8 +247,7 @@ fn ingest_linter_errors(
         max_linter_count,
         version,
         lsp_diagnostics,
-    );
-    Ok(())
+    )
 }
 
 pub fn run_formatter(

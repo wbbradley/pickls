@@ -1,6 +1,7 @@
 use crate::prelude::*;
 use regex::Regex;
 use std::io::{BufRead, BufReader};
+use std::str::FromStr;
 
 const MAX_CTAGS_SYMBOLS: usize = 10_000_000;
 
@@ -63,8 +64,10 @@ pub(crate) fn parse_ctags_output(
             .take()
             .ok_or_else(|| Error::new("Failed to capture child process stdout"))?,
     );
+    log::info!("parsing ctags output");
     for line in BufReader::new(stdout).lines() {
         let line = line?;
+        // log::info!("parsing ctags line: {line}");
         if Instant::now() > ctags_timeout_after {
             log::warn!("ctags timed out");
             break;
@@ -81,8 +84,11 @@ pub(crate) fn parse_ctags_output(
             log::trace!("skipping line due to regexes [line='{line}', regexes={regexes:?}]");
             continue;
         }
+        log::info!(
+            "found symbol [tag='{tag}', path='{path}', line_number={line_number}, kind={kind:?}]"
+        );
         if let Ok(path) = PathBuf::from(path).canonicalize() {
-            if let Some(Ok(uri)) = path.to_str().map(serde_json::from_str) {
+            if let Ok(uri) = Uri::from_str(&format!("file://{}", path.to_str().unwrap())) {
                 #[allow(deprecated)]
                 let symbol = SymbolInformation {
                     name: tag.to_string(),
@@ -105,7 +111,11 @@ pub(crate) fn parse_ctags_output(
                     container_name: None,
                 };
                 symbols.push(symbol);
+            } else {
+                log::info!("failed to convert path to URI [path='{}']", path.display());
             }
+        } else {
+            log::info!("failed to canonicalize path [path='{path}']");
         }
     }
     Ok(symbols)

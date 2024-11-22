@@ -25,7 +25,7 @@ impl DiagnosticsManager {
         max_linter_count: usize,
         version: DocumentVersion,
         new_diagnostics: Vec<Diagnostic>,
-    ) {
+    ) -> Result<()> {
         if !self.diagnostics_storage.contains_key(&uri) {
             self.diagnostics_storage.insert(
                 uri.clone(),
@@ -54,10 +54,15 @@ impl DiagnosticsManager {
             self.client
                 .publish_diagnostics(uri.clone(), diagnostics, Some(version.0));
 
-            for _progress_message in progress_messages.into_iter() {
-                // TODO
-                // self.client.send_notification::<Progress>(progress_message);
+            for progress_message in progress_messages.into_iter() {
+                if let e @ Err(_) = self
+                    .client
+                    .send_notification::<Progress, _>(progress_message)
+                {
+                    return e;
+                }
             }
         }
+        Ok(())
     }
 }

@@ -5,16 +5,16 @@ use std::io::BufRead;
 
 pub trait LanguageServer {
     fn code_action(&mut self, params: CodeActionParams) -> Result<Option<CodeActionResponse>>;
-    fn did_change(&mut self, params: DidChangeTextDocumentParams);
-    fn did_change_configuration(&mut self, dccp: DidChangeConfigurationParams);
-    fn did_close(&mut self, params: DidCloseTextDocumentParams);
-    fn did_open(&mut self, params: DidOpenTextDocumentParams);
-    // fn will_save(&mut self, params: WillSaveTextDocumentParams);
-    // fn did_save(&mut self, params: DidSaveTextDocumentParams);
+    fn did_change(&mut self, params: DidChangeTextDocumentParams) -> Result<()>;
+    fn did_change_configuration(&mut self, dccp: DidChangeConfigurationParams) -> Result<()>;
+    fn did_close(&mut self, params: DidCloseTextDocumentParams) -> Result<()>;
+    fn did_open(&mut self, params: DidOpenTextDocumentParams) -> Result<()>;
+    // fn will_save(&mut self, params: WillSaveTextDocumentParams) -> Result<()>;
+    // fn did_save(&mut self, params: DidSaveTextDocumentParams) -> Result<()>;
     fn execute_command(&mut self, params: ExecuteCommandParams) -> Result<Option<Value>>;
     fn formatting(&mut self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>>;
     fn initialize(&mut self, params: InitializeParams) -> Result<InitializeResult>;
-    fn initialized(&mut self, _: InitializedParams);
+    fn initialized(&mut self, _: InitializedParams) -> Result<()>;
     fn shutdown(&self) -> Result<()>;
     fn set_trace(&mut self, params: SetTraceParams) {}
     fn workspace_symbol(

@@ -3,6 +3,9 @@
 
 use crate::prelude::*;
 
+#[macro_use]
+extern crate serde_json;
+
 mod client;
 mod config;
 mod diagnostic;
@@ -166,7 +169,7 @@ impl LanguageServer for PicklsBackend {
             log::info!(
                 "[PicklsBackend] initialize updating configuration [{initialization_options:?}]",
             );
-            update_configuration(&self.client, &mut self.config, initialization_options);
+            update_configuration(&self.client, &mut self.config, initialization_options)?;
         }
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -313,25 +316,25 @@ impl LanguageServer for PicklsBackend {
         Ok(edit.map(|edit| vec![edit]))
     }
 
-    fn initialized(&mut self, _: InitializedParams) {
+    fn initialized(&mut self, _: InitializedParams) -> Result<()> {
         log::info!(
             "[{site}] initialized called",
             site = self.get_workspace_name()
         );
         self.client
-            .log_message(MessageType::INFO, "pickls Server initialized");
+            .log_message(MessageType::INFO, "pickls Server initialized")
     }
 
-    fn did_change_configuration(&mut self, dccp: DidChangeConfigurationParams) {
+    fn did_change_configuration(&mut self, dccp: DidChangeConfigurationParams) -> Result<()> {
         if dccp.settings.is_null() {
-            return;
+            return Ok(());
         }
         if let serde_json::Value::Object(ref map) = dccp.settings {
             if map.is_empty() {
-                return;
+                return Ok(());
             }
         }
-        update_configuration(&self.client, &mut self.config, dccp.settings);
+        update_configuration(&self.client, &mut self.config, dccp.settings)
     }
 
     fn shutdown(&self) -> Result<()> {
@@ -339,14 +342,15 @@ impl LanguageServer for PicklsBackend {
         Ok(())
     }
 
-    fn did_close(&mut self, params: DidCloseTextDocumentParams) {
+    fn did_close(&mut self, params: DidCloseTextDocumentParams) -> Result<()> {
         self.document_storage.remove(&params.text_document.uri);
         log::info!(
             "[{site}] did_close called [params=...]",
             site = self.get_workspace_name()
         );
+        Ok(())
     }
-    fn did_open(&mut self, params: DidOpenTextDocumentParams) {
+    fn did_open(&mut self, params: DidOpenTextDocumentParams) -> Result<()> {
         log::info!(
             "[{site}] did_open called [language_id={language_id}, params=...]",
             site = self.get_workspace_name(),
@@ -360,16 +364,15 @@ impl LanguageServer for PicklsBackend {
                 file_contents: file_contents.clone(),
             },
         );
-        if let Err(error) = self.run_diagnostics(JobSpec {
+        self.run_diagnostics(JobSpec {
             uri: params.text_document.uri,
             version: DocumentVersion(params.text_document.version),
             language_id: params.text_document.language_id,
             text: file_contents,
-        }) {
-            log::error!("did_open: {error:?}");
-        }
+        })
+        .context("did_open")
     }
-    fn did_change(&mut self, mut params: DidChangeTextDocumentParams) {
+    fn did_change(&mut self, mut params: DidChangeTextDocumentParams) -> Result<()> {
         log::trace!(
             "[{site}] did_change called [params=...]",
             site = self.get_workspace_name()
@@ -380,11 +383,13 @@ impl LanguageServer for PicklsBackend {
 
         let language_id = {
             let Some(document_storage) = self.document_storage.get_mut(&uri) else {
-                self.client.log_message(
-                    MessageType::WARNING,
-                    format!("no document found for uri {uri}", uri = uri.as_str()),
-                );
-                return;
+                self.client
+                    .log_message(
+                        MessageType::WARNING,
+                        format!("no document found for uri {uri}", uri = uri.as_str()),
+                    )
+                    .unwrap();
+                return Ok(());
             };
 
             // Update the file contents.
@@ -392,14 +397,13 @@ impl LanguageServer for PicklsBackend {
             document_storage.language_id.clone()
         };
 
-        if let Err(error) = self.run_diagnostics(JobSpec {
+        self.run_diagnostics(JobSpec {
             uri,
             version: DocumentVersion(params.text_document.version),
             language_id,
             text: file_contents,
-        }) {
-            log::warn!("did_change: {error:?}");
-        }
+        })
+        .context("did_change")
     }
     fn workspace_symbol(
         &mut self,
@@ -453,21 +457,22 @@ fn update_configuration(
     client: &Client,
     pickls_settings: &mut PicklsConfig,
     settings: serde_json::Value,
-) {
+) -> Result<()> {
     match serde_json::from_value::<PicklsConfig>(settings) {
         Ok(settings) => {
             client.log_message(
                 MessageType::INFO,
                 format!("configuration changed [config={settings:?}]!"),
-            );
+            )?;
             *pickls_settings = settings;
         }
         Err(error) => {
             let message = format!("invalid pickls configuration [{error}]");
             log::warn!("{}", message);
-            client.log_message(MessageType::WARNING, message);
+            client.log_message(MessageType::WARNING, message)?;
         }
     }
+    Ok(())
 }
 
 fn setup_logging(base_dirs: &xdg::BaseDirectories, level: log::LevelFilter) -> Result<()> {
