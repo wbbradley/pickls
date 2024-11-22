@@ -277,6 +277,3 @@ please include the following information:
 
 - How you have configured `pickls` in your editor.
 - Any relevant lines from `"$HOME"/.local/state/pickls/pickls.log`.
-
-```
-```
