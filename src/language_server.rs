@@ -164,7 +164,7 @@ impl<R: BufRead> Iterator for ParseJsonRpc<R> {
                 .parse::<u32>()
                 .ok()?;
 
-            log::info!("Got Content-Length: {:?}", content_length);
+            log::trace!("Got Content-Length: {:?}", content_length);
             content_length
         } else {
             log::error!("Expected Content-Length, got {:?}", buf);

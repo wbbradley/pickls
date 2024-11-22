@@ -282,7 +282,6 @@ impl LanguageServer for PicklsBackend {
         };
 
         // The big edit to return.
-        let mut edit: Option<TextEdit> = None;
         log::info!(
             "Formatting file '{uri}' with {count} formatters",
             uri = uri.as_str(),
@@ -296,24 +295,26 @@ impl LanguageServer for PicklsBackend {
                 &language_config.root_markers,
                 file_contents,
                 uri.clone(),
-            ).inspect(|formatted_content|   {
-                    log::info!(
-                        "Formatter {program} succeeded for url '{uri}' [formatted_len={formatted_len}, formatter={program}]",
-                        uri = uri.as_str(),
-                        formatted_len = formatted_content.len(),
-                    );
-                    // Create a TextEdit that replaces the whole document
-                    edit = Some(TextEdit {
-                        range: Range {
-                            start: Position::new(0, 0),
-                            end: Position::new(u32::MAX, u32::MAX),
-                        },
-                        new_text: formatted_content.clone(),
-                    });
-                }).context("formatter error")?;
-        }
+            )
+            .inspect(|formatted_content| {
+                log::info!(
+                    "Formatter {program} succeeded for url '{uri}' \
+                        [formatted_len={formatted_len}, formatter={program}]",
+                    uri = uri.as_str(),
+                    formatted_len = formatted_content.len(),
+                );
 
-        Ok(edit.map(|edit| vec![edit]))
+                // Create a TextEdit that replaces the whole document
+            })
+            .context("formatter error")?;
+        }
+        Ok(Some(vec![TextEdit {
+            range: Range {
+                start: Position::new(0, 0),
+                end: Position::new(u32::MAX, u32::MAX),
+            },
+            new_text: file_contents.clone(),
+        }]))
     }
 
     fn initialized(&mut self, _: InitializedParams) -> Result<()> {
@@ -515,7 +516,7 @@ fn main() -> Result<()> {
         "pickls started; pid={pid}; parent_process_info={parent_process_info}",
         pid = nix::unistd::getpid()
     );
-    let config = read_config(&base_dirs).unwrap_or_default();
+    let config = read_config(&base_dirs).unwrap();
 
     // Initialize the configuration's site name.
     run_server(|client| PicklsBackend::new(client, config))

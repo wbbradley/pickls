@@ -46,6 +46,7 @@ impl Client {
             "params": params,
         }))?;
         let mut w = self.stdout.borrow_mut();
+        log::trace!("Sending packet length: {}", json.len());
         write!(w, "Content-Length: {}\r\n\r\n{}", json.len(), json)?;
         Ok(w.flush()?)
     }
@@ -58,6 +59,7 @@ impl Client {
         };
         let response_text = serde_json::to_string(&JsonRpcResponse::response(id, result)).unwrap();
         let mut w = self.stdout.borrow_mut();
+        log::trace!("Sending response length: {}", response_text.len());
         write!(
             w,
             "Content-Length: {}\r\n\r\n{}",

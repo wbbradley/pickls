@@ -15,10 +15,8 @@ where
     log::info!("Server is running");
     for rpc in parse_json_rpc(stdin.lock()) {
         let rpc = rpc.context("Error parsing JSON")?;
-        log::info!("Received message: {:#?}", rpc);
+        // log::info!("Received message: {:#?}", rpc);
         // This is a Request.
-        log::info!("Received id: {:?}", rpc.id);
-        log::info!("Received method: {}", rpc.method);
         let id = rpc.id.clone();
         match rpc.method.as_str() {
             Initialize::METHOD => {
@@ -61,15 +59,18 @@ where
                     .did_close(rpc.take_params()?)
                     .ok_or_log("Error in did_close");
             }
-            Formatting::METHOD => {
-                client.write_response(id, backend.formatting(rpc.take_params()?)?)?;
-            }
+            Formatting::METHOD => match backend.formatting(rpc.take_params()?) {
+                Ok(response) => client.write_response(id, response)?,
+                Err(error) => log::warn!("Error in formatting: {}", error),
+            },
             Shutdown::METHOD => {
                 client.write_response(id, backend.shutdown()?)?;
                 log::info!("Shutting down");
                 break;
             }
-            _ => {}
+            _ => {
+                log::warn!("Unhandled method: {}", rpc.method);
+            }
         }
     }
     Ok(())
