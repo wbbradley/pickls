@@ -2,7 +2,7 @@
 
 **(pronounced /ˈpɪkᵊlz/)**
 
-<img src="https://github.com/user-attachments/assets/64765055-e9a8-45a6-b89a-eb91c2e32ac7" style="width: 200px">
+<img src="https://github.com/user-attachments/assets/35f324e6-287e-4c5c-b9cf-942892053f48" style="width: 200px">
 
 ## The General Purpose Language Server for Command-Line Linters and Formatters
 
