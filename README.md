@@ -97,6 +97,15 @@ languages:
         severity_match: 2
         use_stderr: false
         use_stdin: true
+  lua:
+    formatters:
+      - program: lua-format
+        args:
+          - "--indent-width=2"
+          - "--spaces-inside-table-braces"
+          - "--align-table-field"
+          - "--break-before-table-rb"
+          - "--chop-down-table"
   markdown:
     formatters:
       - program: mdformat
@@ -123,6 +132,7 @@ languages:
           - --stdin-filename
           - $filename
     linters:
+      # Try out [dmypyls](https://github.com/wbbradly/dmypyls).
       - program: mypy
         args:
           - --show-column-numbers
@@ -168,6 +178,7 @@ languages:
         description_match: 5
         use_stderr: false
         use_stdin: true
+  bash: *sh
   shell script: *sh
   toml:
     linters:
