@@ -115,10 +115,20 @@ impl<'de> Deserialize<'de> for MessageId {
 }
 
 #[derive(Serialize)]
+pub struct JsonRpcError {
+    code: i64,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<serde_json::Value>,
+}
+#[derive(Serialize)]
 pub struct JsonRpcResponse<T> {
     pub jsonrpc: &'static str,
     pub id: MessageId,
-    pub result: T,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<JsonRpcError>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<T>,
 }
 
 impl<T: Serialize> JsonRpcResponse<T> {
@@ -126,7 +136,24 @@ impl<T: Serialize> JsonRpcResponse<T> {
         Self {
             jsonrpc: "2.0",
             id,
-            result,
+            error: None,
+            result: Some(result),
+        }
+    }
+}
+
+impl JsonRpcResponse<()> {
+    pub fn error(id: MessageId, error: Error) -> Self {
+        Self {
+            jsonrpc: "2.0",
+            id,
+            error: Some(JsonRpcError {
+                // -32000 to -32099 are reserved for implementation-defined server errors.
+                code: -32023,
+                message: error.to_string(),
+                data: None,
+            }),
+            result: None,
         }
     }
 }

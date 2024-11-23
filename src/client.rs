@@ -50,22 +50,45 @@ impl Client {
         write!(w, "Content-Length: {}\r\n\r\n{}", json.len(), json)?;
         Ok(w.flush()?)
     }
-    pub fn write_response<T: Serialize>(&self, id: Option<MessageId>, result: T) -> Result<()> {
-        let Some(id) = id else {
-            return Err(Error::new(format!(
-                "missing id for response ({})",
-                std::any::type_name::<T>()
-            )));
-        };
-        let response_text = serde_json::to_string(&JsonRpcResponse::response(id, result)).unwrap();
-        let mut w = self.stdout.borrow_mut();
-        log::trace!("Sending response length: {}", response_text.len());
-        write!(
-            w,
-            "Content-Length: {}\r\n\r\n{}",
-            response_text.len(),
-            response_text
-        )?;
-        Ok(w.flush()?)
+    pub fn write_response<T: Serialize>(
+        &self,
+        id: Option<MessageId>,
+        result: Result<T>,
+    ) -> Result<()> {
+        match result {
+            Ok(result) => {
+                let Some(id) = id else {
+                    return Err(Error::new(format!(
+                        "missing id for response ({})",
+                        std::any::type_name::<T>()
+                    )));
+                };
+                let response_text =
+                    serde_json::to_string(&JsonRpcResponse::response(id, result)).unwrap();
+                let mut w = self.stdout.borrow_mut();
+                log::trace!("Sending response length: {}", response_text.len());
+                write!(
+                    w,
+                    "Content-Length: {}\r\n\r\n{}",
+                    response_text.len(),
+                    response_text
+                )?;
+                Ok(w.flush()?)
+            }
+            Err(error) => {
+                let id = id.unwrap_or(MessageId::Number(0));
+                let response_text =
+                    serde_json::to_string(&JsonRpcResponse::error(id, error)).unwrap();
+                let mut w = self.stdout.borrow_mut();
+                log::trace!("Sending error response length: {}", response_text.len());
+                write!(
+                    w,
+                    "Content-Length: {}\r\n\r\n{}",
+                    response_text.len(),
+                    response_text
+                )?;
+                Ok(w.flush()?)
+            }
+        }
     }
 }

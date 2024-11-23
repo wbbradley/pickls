@@ -20,7 +20,7 @@ where
         let id = rpc.id.clone();
         match rpc.method.as_str() {
             Initialize::METHOD => {
-                client.write_response(id, backend.initialize(rpc.take_params()?)?)?;
+                client.write_response(id, backend.initialize(rpc.take_params()?))?;
             }
             Initialized::METHOD => {
                 backend
@@ -31,13 +31,13 @@ where
                 backend.set_trace(rpc.take_params()?);
             }
             WorkspaceSymbolRequest::METHOD => {
-                client.write_response(id, backend.workspace_symbol(rpc.take_params()?)?)?;
+                client.write_response(id, backend.workspace_symbol(rpc.take_params()?))?;
             }
             ExecuteCommand::METHOD => {
-                client.write_response(id, backend.execute_command(rpc.take_params()?)?)?;
+                client.write_response(id, backend.execute_command(rpc.take_params()?))?;
             }
             CodeActionRequest::METHOD => {
-                client.write_response(id, backend.code_action(rpc.take_params()?)?)?;
+                client.write_response(id, backend.code_action(rpc.take_params()?))?;
             }
             DidChangeTextDocument::METHOD => {
                 backend
@@ -59,12 +59,11 @@ where
                     .did_close(rpc.take_params()?)
                     .ok_or_log("Error in did_close");
             }
-            Formatting::METHOD => match backend.formatting(rpc.take_params()?) {
-                Ok(response) => client.write_response(id, response)?,
-                Err(error) => log::warn!("Error in formatting: {}", error),
-            },
+            Formatting::METHOD => {
+                client.write_response(id, backend.formatting(rpc.take_params()?))?;
+            }
             Shutdown::METHOD => {
-                client.write_response(id, backend.shutdown()?)?;
+                client.write_response(id, backend.shutdown())?;
                 log::info!("Shutting down");
                 break;
             }
