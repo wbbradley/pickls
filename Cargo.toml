@@ -25,6 +25,10 @@ thiserror = "1.0.64"
 toml = "0.8.19"
 lsp-types = "0.97.0"
 xdg = "2.5.2"
-tokio = { version = "1.41.1", features = ["rt-multi-thread"] }
+tokio = { version = "1.41.1", features = ["rt-multi-thread", "process"] }
 reqwest = "0.12.9"
 crossbeam-channel = "0.5.13"
+handlebars = "6.2.0"
+allms = "0.8.2"
+anyhow = "1.0.93"
+schemars = "0.8.21"

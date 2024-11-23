@@ -1,3 +1,4 @@
+pub(crate) use crate::ai::*;
 pub(crate) use crate::client::*;
 pub(crate) use crate::config::*;
 pub(crate) use crate::diagnostic::*;
@@ -26,6 +27,7 @@ pub use serde_json::Value;
 pub use std::collections::{BTreeSet, HashMap};
 pub use std::fs::read_to_string;
 pub use std::{cell::RefCell, rc::Rc};
+pub use tokio::runtime::Runtime;
 
 pub use std::path::PathBuf;
 pub use std::process::Command;

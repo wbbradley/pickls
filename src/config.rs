@@ -7,6 +7,8 @@ pub struct PicklsConfig {
     #[serde(default)]
     pub languages: HashMap<String, PicklsLanguageConfig>,
     pub symbols: Option<PicklsSymbolsConfig>,
+    #[serde(default)]
+    pub ai: PicklsAIConfig,
 }
 
 fn default_ctags_timeout_ms() -> u64 {
@@ -112,4 +114,69 @@ pub struct PicklsFormatterConfig {
 
 pub fn parse_config(content: &str) -> Result<PicklsConfig> {
     Ok(serde_yml::from_str(content)?)
+}
+#[derive(Clone, Debug, Deserialize, Default)]
+pub struct PicklsAIConfig {
+    /// The prompt used to initiate a chat.
+    // #[serde(default = "default_system_prompt_template")]
+    // pub system_prompt: String,
+    #[serde(default)]
+    pub inline_assist: InlineAssistConfig,
+    #[allow(dead_code)]
+    pub openai: Option<OpenAIConfig>,
+}
+#[derive(Clone, Debug, Deserialize, Default)]
+pub enum PicklsAIProvider {
+    #[serde(rename = "openai")]
+    #[default]
+    OpenAI,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct InlineAssistConfig {
+    #[allow(dead_code)]
+    pub provider: PicklsAIProvider,
+    /// The prompt used to perform the pickls.inline-assist code action.
+    #[serde(default = "default_inline_assist_prompt")]
+    pub template: String,
+}
+
+impl Default for InlineAssistConfig {
+    fn default() -> Self {
+        InlineAssistConfig {
+            provider: PicklsAIProvider::OpenAI,
+            template: default_inline_assist_prompt(),
+        }
+    }
+}
+#[derive(Clone, Debug, Deserialize)]
+pub struct OpenAIConfig {
+    #[allow(dead_code)]
+    /// The OpenAI model to use, (ie: "gpt-4o")
+    pub model: String,
+    #[allow(dead_code)]
+    /// The command to run to print the OpenAPI key. (If None, will look at $OPENAI_API_KEY)
+    #[serde(default = "default_openai_api_key_cmd")]
+    pub api_key_cmd: Vec<String>,
+}
+
+impl Default for OpenAIConfig {
+    fn default() -> Self {
+        OpenAIConfig {
+            model: "gpt-4o".to_string(),
+            api_key_cmd: default_openai_api_key_cmd(),
+        }
+    }
+}
+
+fn default_openai_api_key_cmd() -> Vec<String> {
+    ["sh", "-c", "echo $OPENAI_API_KEY"]
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+fn default_inline_assist_prompt() -> String {
+    "I'm working within a {{language_id}} file, I'd like to do the following:\n\n\
+        {{text}}\n"
+        .to_string()
 }

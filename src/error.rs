@@ -1,3 +1,4 @@
+use handlebars::RenderError;
 use std::{num::ParseIntError, panic::Location};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -18,7 +19,7 @@ pub(crate) trait Context<T> {
     }
 }
 
-impl<T, E: std::error::Error> Context<T> for std::result::Result<T, E> {
+impl<T, E: std::fmt::Display> Context<T> for std::result::Result<T, E> {
     #[track_caller]
     #[inline]
     fn context(self, context: &str) -> Result<T> {
@@ -119,6 +120,16 @@ impl<T> From<std::sync::mpsc::SendError<T>> for Error {
     }
 }
 
+impl From<RenderError> for Error {
+    #[track_caller]
+    fn from(error: RenderError) -> Self {
+        Self {
+            message: format!("render error: {error:?}"),
+            location: Location::caller(),
+        }
+    }
+}
+
 impl<T> From<crossbeam_channel::SendError<T>> for Error {
     #[track_caller]
     fn from(error: crossbeam_channel::SendError<T>) -> Self {
@@ -154,6 +165,16 @@ impl From<ParseIntError> for Error {
     fn from(error: ParseIntError) -> Self {
         Self {
             message: format!("parse int error: {error:?}"),
+            location: Location::caller(),
+        }
+    }
+}
+
+impl From<anyhow::Error> for Error {
+    #[track_caller]
+    fn from(error: anyhow::Error) -> Self {
+        Self {
+            message: format!("anyhow error: {error:?}"),
             location: Location::caller(),
         }
     }

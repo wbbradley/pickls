@@ -6,6 +6,7 @@ use crate::prelude::*;
 #[macro_use]
 extern crate serde_json;
 
+mod ai;
 mod client;
 mod config;
 mod diagnostic;
@@ -28,6 +29,7 @@ mod workspace;
 
 struct PicklsBackend {
     client: Client,
+    rt: Runtime,
     client_info: Option<ClientInfo>,
 
     workspace: Workspace,
@@ -38,8 +40,9 @@ struct PicklsBackend {
 }
 
 impl PicklsBackend {
-    pub fn new(client: Client, config: PicklsConfig) -> Self {
+    pub fn new(client: Client, rt: Runtime, config: PicklsConfig) -> Self {
         Self {
+            rt,
             workspace: Workspace::new(),
             config,
             jobs: Default::default(),
@@ -150,6 +153,28 @@ impl PicklsBackend {
         assert!(self.jobs.insert(job_id, new_jobs).is_none());
         Ok(())
     }
+    fn fetch_inline_assistance(
+        &mut self,
+        language_id: String,
+        text: String,
+    ) -> Result<InlineAssistResponse> {
+        let Some(api_key_cmd) = self.config.ai.openai.as_ref().map(|x| &x.api_key_cmd) else {
+            return Err(Error::new("No API key command found for OpenAI"));
+        };
+        let context = InlineAssistTemplateContext { language_id, text };
+        let prompt = render_template(&self.config.ai.inline_assist.template, context)
+            .context("Inline assist prompt is not properly configured")?;
+
+        // Send this over yonder to the background thread.
+        self.rt.block_on(async move {
+            let api_key = get_command_output(api_key_cmd)
+                .await
+                .context("getting api_key_cmd output")?;
+            let openai_answer = fetch_completion(api_key, prompt).await?;
+            log::info!("openai_answer: {:?}", openai_answer);
+            <Result<InlineAssistResponse>>::Ok(openai_answer)
+        })
+    }
 }
 
 impl LanguageServer for PicklsBackend {
@@ -229,7 +254,7 @@ impl LanguageServer for PicklsBackend {
         // Get the text of the document from the document storage.
         let uri = params.text_document.uri;
         let DocumentStorage {
-            language_id: _language_id,
+            language_id,
             file_contents,
         } = self.get_document(&uri)?;
         // Write a function that takes the file contents and the range from within the params and
@@ -242,24 +267,31 @@ impl LanguageServer for PicklsBackend {
             log::info!("No selection found, returning early");
             return Ok(None);
         }
-        /* let context = InlineAssistTemplateContext { language_id, text };
-
-         let config = self.config.lock();
-         let _prompt = create_inline_assist_prompt(&config.ai.inline_assist.template, context)
-
-             .ok_or_else(|| Error {
-                 code: TowerLspErrorCode::InvalidParams,
-                 message: "Inline assist prompt is not properly configured".into(),
-                 data: None,
-             })?;
-         let Some(_api_key_cmd) = config.ai.openai.as_ref().map(|x| &x.api_key_cmd) else {
-             return Err(Error::new("No API key command found for OpenAI").into());
-         };
-        */
-        // let api_key = get_command_output(api_key_cmd)?;
-        // let _openai_answer = fetch_inline_assist_response();
-        // println!("openai_answer: {:?}", openai_answer);
-        Ok(None)
+        let response = self.fetch_inline_assistance(language_id, text)?;
+        Ok(Some(vec![CodeActionOrCommand::CodeAction(CodeAction {
+            title: "Inline Assist".to_string(),
+            kind: Some(CodeActionKind::new("pickls.inline-assist")),
+            edit: Some(WorkspaceEdit {
+                changes: Some(
+                    [(
+                        uri,
+                        vec![TextEdit {
+                            range,
+                            new_text: response.code,
+                        }],
+                    )]
+                    .into_iter()
+                    .collect(),
+                ),
+                document_changes: None,
+                change_annotations: None,
+            }),
+            command: None,
+            diagnostics: None,
+            is_preferred: None,
+            disabled: None,
+            data: None,
+        })]))
     }
     fn execute_command(&mut self, params: ExecuteCommandParams) -> Result<Option<Value>> {
         let _ = params;
@@ -518,10 +550,10 @@ fn main() -> Result<()> {
         pid = nix::unistd::getpid()
     );
     let config = read_config(&base_dirs).unwrap();
-    let (_rt, tx) = start_work_queue();
+    let (rt, tx) = start_work_queue();
     tx.send(AsyncJobRequest::Prompt(
         "Write me a fibonacci sequence function in Python".to_string(),
     ))?;
     // Initialize the configuration's site name.
-    run_server(|client| PicklsBackend::new(client, config))
+    run_server(|client| PicklsBackend::new(client, rt, config))
 }

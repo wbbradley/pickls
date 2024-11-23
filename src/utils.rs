@@ -1,4 +1,7 @@
+use crate::error::{Context as _, Error, Result};
+use handlebars::Handlebars;
 use lsp_types::Range;
+use serde::Serialize;
 use std::process;
 pub use sysinfo::{Pid, System};
 
@@ -103,4 +106,27 @@ pub fn outdent_text(text: &str) -> String {
         })
         .collect::<Vec<&str>>()
         .join("\n")
+}
+
+pub async fn get_command_output(cmd: &[String]) -> Result<String> {
+    use tokio::process::Command;
+    let output = Command::new(&cmd[0])
+        .args(&cmd[1..])
+        .output()
+        .await
+        .context("Failed to run command")?;
+    if !output.status.success() {
+        return Err(Error::new(format!(
+            "Command failed with status: {status:?}",
+            status = output.status
+        )));
+    }
+    String::from_utf8(output.stdout).context("Failed to read stdout as utf-8")
+}
+
+pub fn render_template<T: Serialize>(template: &str, context: T) -> Result<String> {
+    let mut reg = Handlebars::new();
+    // Avoid all escaping.
+    reg.register_escape_fn(|x| x.to_string());
+    Ok(reg.render_template(template, &context)?)
 }
