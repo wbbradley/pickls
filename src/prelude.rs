@@ -14,6 +14,7 @@ pub(crate) use crate::server::*;
 pub(crate) use crate::tags::*;
 pub(crate) use crate::tool::*;
 pub(crate) use crate::utils::*;
+pub(crate) use crate::work_queue::*;
 pub(crate) use crate::workspace::*;
 pub use lsp_types::notification::*;
 pub use lsp_types::*;

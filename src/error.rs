@@ -109,6 +109,26 @@ impl From<toml::de::Error> for Error {
     }
 }
 
+impl<T> From<std::sync::mpsc::SendError<T>> for Error {
+    #[track_caller]
+    fn from(error: std::sync::mpsc::SendError<T>) -> Self {
+        Self {
+            message: format!("mpsc send error: {error:?}"),
+            location: Location::caller(),
+        }
+    }
+}
+
+impl<T> From<crossbeam_channel::SendError<T>> for Error {
+    #[track_caller]
+    fn from(error: crossbeam_channel::SendError<T>) -> Self {
+        Self {
+            message: format!("crossbeam channel send error: {error:?}"),
+            location: Location::caller(),
+        }
+    }
+}
+
 impl From<String> for Error {
     #[track_caller]
     fn from(error: String) -> Self {

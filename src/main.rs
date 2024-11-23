@@ -23,6 +23,7 @@ mod server;
 mod tags;
 mod tool;
 mod utils;
+mod work_queue;
 mod workspace;
 
 struct PicklsBackend {
@@ -517,7 +518,10 @@ fn main() -> Result<()> {
         pid = nix::unistd::getpid()
     );
     let config = read_config(&base_dirs).unwrap();
-
+    let (_rt, tx) = start_work_queue();
+    tx.send(AsyncJobRequest::Prompt(
+        "Write me a fibonacci sequence function in Python".to_string(),
+    ))?;
     // Initialize the configuration's site name.
     run_server(|client| PicklsBackend::new(client, config))
 }
