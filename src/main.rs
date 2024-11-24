@@ -8,7 +8,6 @@ extern crate serde_json;
 
 mod ai;
 mod client;
-mod config;
 mod diagnostic;
 mod diagnostic_severity;
 mod diagnostics_manager;
@@ -24,7 +23,6 @@ mod server;
 mod tags;
 mod tool;
 mod utils;
-mod work_queue;
 mod workspace;
 
 struct PicklsBackend {
@@ -154,7 +152,7 @@ impl PicklsBackend {
         Ok(())
     }
     fn fetch_inline_assistance(
-        &mut self,
+        &self,
         language_id: String,
         text: String,
     ) -> Result<InlineAssistResponse> {
@@ -180,9 +178,11 @@ impl PicklsBackend {
             let api_key = get_command_output(&api_key_cmd)
                 .await
                 .context("getting api_key_cmd output")?;
-            let openai_answer = fetch_completion(api_key, model, prompt).await?;
+            let mut openai_answer = fetch_completion(api_key, model, prompt).await?;
             log::info!("openai_answer: {:?}", openai_answer);
-            <Result<InlineAssistResponse>>::Err("nope".into()) // Ok(openai_answer)
+            Ok(InlineAssistResponse {
+                code: std::mem::take(&mut openai_answer.choices[0].message.content),
+            })
         })
     }
 }
@@ -266,6 +266,7 @@ impl LanguageServer for PicklsBackend {
         let DocumentStorage {
             language_id,
             file_contents,
+            version,
         } = self.get_document(&uri)?;
         // Write a function that takes the file contents and the range from within the params and
         // returns a slice of the file contents that corresponds to the range.
@@ -277,31 +278,43 @@ impl LanguageServer for PicklsBackend {
             log::info!("No selection found, returning early");
             return Ok(None);
         }
-        let response = self.fetch_inline_assistance(language_id, text)?;
-        Ok(Some(vec![CodeActionOrCommand::CodeAction(CodeAction {
-            title: "Inline Assist".to_string(),
-            kind: Some(CodeActionKind::new("pickls.inline-assist")),
-            edit: Some(WorkspaceEdit {
-                changes: Some(
-                    [(
-                        uri,
-                        vec![TextEdit {
-                            range,
-                            new_text: response.code,
-                        }],
-                    )]
-                    .into_iter()
-                    .collect(),
-                ),
-                document_changes: None,
-                change_annotations: None,
-            }),
-            command: None,
-            diagnostics: None,
-            is_preferred: None,
-            disabled: None,
-            data: None,
-        })]))
+
+        // Always create at least one progress message to denote the current update.
+        let progress = make_progress_params("running inline-assist", uri.clone(), version, 0, 1);
+        self.client.send_notification::<Progress, _>(progress)?;
+        let completed_progress =
+            make_progress_params("completed inline-assist", uri.clone(), version, 1, 1);
+
+        let result = (|| {
+            let response = self.fetch_inline_assistance(language_id, text)?;
+            Ok(Some(vec![CodeActionOrCommand::CodeAction(CodeAction {
+                title: "Inline Assist".to_string(),
+                kind: Some(CodeActionKind::new("pickls.inline-assist")),
+                edit: Some(WorkspaceEdit {
+                    changes: Some(
+                        [(
+                            uri,
+                            vec![TextEdit {
+                                range,
+                                new_text: response.code,
+                            }],
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                    document_changes: None,
+                    change_annotations: None,
+                }),
+                command: None,
+                diagnostics: None,
+                is_preferred: None,
+                disabled: None,
+                data: None,
+            })]))
+        })();
+        self.client
+            .send_notification::<Progress, _>(completed_progress)?;
+        result
     }
     fn execute_command(&mut self, params: ExecuteCommandParams) -> Result<Option<Value>> {
         let _ = params;
@@ -315,6 +328,7 @@ impl LanguageServer for PicklsBackend {
         let DocumentStorage {
             mut file_contents,
             language_id,
+            ..
         } = self.get_document(&uri)?;
         let language_config = match self.fetch_language_config(&language_id) {
             Some(config) => config,
@@ -406,6 +420,7 @@ impl LanguageServer for PicklsBackend {
             DocumentStorage {
                 language_id: params.text_document.language_id.clone(),
                 file_contents: file_contents.clone(),
+                version: DocumentVersion(params.text_document.version),
             },
         );
         self.run_diagnostics(JobSpec {
@@ -527,7 +542,7 @@ fn setup_logging(base_dirs: &xdg::BaseDirectories, level: log::LevelFilter) -> R
 fn read_config(base_dirs: &xdg::BaseDirectories) -> Option<PicklsConfig> {
     let config_filename = base_dirs.get_config_file(format!("{}.yaml", env!("CARGO_PKG_NAME")));
     log::info!("attempting to read configuration from {config_filename:?}");
-    let config = config::parse_config(
+    let config = parse_config(
         read_to_string(config_filename)
             .ok_or_log("failed to read configuration")?
             .as_str(),
@@ -545,6 +560,10 @@ fn read_config(base_dirs: &xdg::BaseDirectories) -> Option<PicklsConfig> {
     config
 }
 
+pub fn parse_config(content: &str) -> Result<PicklsConfig> {
+    Ok(serde_yml::from_str(content)?)
+}
+
 fn main() -> Result<()> {
     if std::env::args().nth(1) == Some("version".to_string()) {
         println!("{}", env!("CARGO_PKG_VERSION"));
@@ -560,10 +579,7 @@ fn main() -> Result<()> {
         pid = nix::unistd::getpid()
     );
     let config = read_config(&base_dirs).unwrap();
-    let (rt, tx) = start_work_queue();
-    tx.send(AsyncJobRequest::Prompt(
-        "Write me a fibonacci sequence function in Python".to_string(),
-    ))?;
+    let rt = Runtime::new().context("creating tokio runtime")?;
     // Initialize the configuration's site name.
     run_server(|client| PicklsBackend::new(client, rt, config))
 }

@@ -57,7 +57,13 @@ impl DocumentDiagnostics {
         let available = self.linter_diagnostics.len();
         let mut progress_messages = vec![
             // Always create at least one progress message to denote the current update.
-            make_progress_params(uri.clone(), max_version, available, self.max_linter_count),
+            make_progress_params(
+                "gathering diagnostics",
+                uri.clone(),
+                max_version,
+                available,
+                self.max_linter_count,
+            ),
         ];
         for &version in self.versions.iter().rev().skip(1) {
             progress_messages.push(ProgressParams {
@@ -81,7 +87,9 @@ impl DocumentDiagnostics {
         )
     }
 }
-fn make_progress_params(
+
+pub fn make_progress_params<T: Into<String>>(
+    message: T,
     uri: Uri,
     version: DocumentVersion,
     available: usize,
@@ -102,7 +110,7 @@ fn make_progress_params(
             //
             WorkDoneProgress::Report(WorkDoneProgressReport {
                 cancellable: Some(false),
-                message: Some("job finished".into()),
+                message: Some(message.into()),
                 percentage,
             })
         }),

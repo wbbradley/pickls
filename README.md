@@ -17,8 +17,11 @@ integration.
 ### Key Features
 
 - Integrate command-line linting and formatting tools with your IDE.
-- Configure multiple linters and formatters for any language.
-- Ideal for projects with toolchains lacking native LSP integration.
+- Configure multiple linters and formatters for any language. This is ideal for
+  projects with toolchains lacking native LSP integration.
+- Has a built-in code action for "Inline Assist" which can be used to replace
+  the current selection by sending it to an LLM. (Currently only OpenAI is
+  supported, but I'll be adding more soon.)
 - Supports usage of [ctags](https://ctags.io/) on demand to provide workspace
   symbol information. (See configuration notes below.)
 
@@ -32,6 +35,8 @@ integration.
   ([spec](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocumentSyncKindA))
 - `workspaceSymbolProvider`
   ([spec](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#workspaceSymbolOptions))
+- `codeAction`
+  ([spec](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_codeAction))
 
 ## Why Use pickls?
 
@@ -58,6 +63,9 @@ development purposes.
 ## Configuration
 
 ### User-level Configuration
+
+Complete config docs are available
+[here](https://docs.rs/pickls-config/latest/pickls_config/struct.PicklsConfig.html).
 
 User-level configuration lives in `"$XDG_CONFIG_HOME/pickls/pickls.yaml` where
 `$XDG_CONFIG_HOME` defaults to `"$HOME"/.config`. Pickls will respect your

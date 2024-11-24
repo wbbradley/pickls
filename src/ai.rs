@@ -12,12 +12,51 @@ pub struct InlineAssistResponse {
     pub code: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OpenAIRole {
+    System,
+    User,
+    Assistant,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct OpenAIChatCompletionChoiceMessage {
+    pub content: String,
+    pub role: OpenAIRole,
+    // ignore: refusal
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct OpenAIChatCompletionChoice {
+    pub finish_reason: String,
+    pub index: u64,
+    // ignore: logprobs: serde_json::Value,
+    pub message: OpenAIChatCompletionChoiceMessage,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct OpenAIChatCompletion {
+    pub choices: Vec<OpenAIChatCompletionChoice>,
+    pub created: u64,
+    pub id: String,
+    pub model: String,
+    pub object: String,
+    pub system_fingerprint: String,
+    // ignore: pub usage: serde_json::Value,
+}
+const INLINE_ASSIST_SYSTEM_PROMPT: &str =
+    "You are a helpful code assistant. Reply with only code and/or comments that would be correct in the context. NEVER include markdown (like ```) annotating your response.";
+
 pub async fn fetch_completion(
     //<T: JsonSchema + DeserializeOwned>(
     api_key: String,
     model: String,
     instructions: String,
-) -> Result<serde_json::Value> {
+) -> Result<OpenAIChatCompletion> {
     log::info!(
         "fetching completion with {} of {}",
         &api_key[0..4],
@@ -28,17 +67,18 @@ pub async fn fetch_completion(
         .post("https://api.openai.com/v1/chat/completions")
         .header("Content-Type", "application/json")
         .bearer_auth(api_key.trim())
-        .body(serde_json::to_string(&json!({"model": model,
-            "messages": [
+        .body(serde_json::to_string(&json!({
+        "model": model,
+        "messages": [
             {
                 "role": "system",
-                "content": "You are a helpful code assistant. Only reply with code that would be correct in the context."
+                "content": INLINE_ASSIST_SYSTEM_PROMPT
             },
             {
                 "role": "user",
                 "content": instructions
             }
-            ]}))?)
+        ]}))?)
         .send()
         .await
         .context("openai post failed")?;

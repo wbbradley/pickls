@@ -69,6 +69,7 @@ where
             }
             DocumentDiagnosticRequest::METHOD => { /*ignore*/ }
             WorkspaceDiagnosticRequest::METHOD => { /*ignore*/ }
+            DidSaveTextDocument::METHOD => { /*ignore*/ }
             _ => {
                 log::warn!("Unhandled method: {}", rpc.method);
             }
