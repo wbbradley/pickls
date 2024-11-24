@@ -71,9 +71,6 @@ User-level configuration lives in `"$XDG_CONFIG_HOME/pickls/pickls.yaml` where
 `$XDG_CONFIG_HOME` defaults to `"$HOME"/.config`. Pickls will respect your
 `$XDG_CONFIG_HOME` if it is set.
 
-Configuration details are available
-[here](https://docs.rs/crate/pickls/latest/source/src/config.rs).
-
 ### Project-level Configuration
 
 Project-level configuration is not yet implemented, but is on the roadmap.
