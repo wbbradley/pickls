@@ -158,21 +158,31 @@ impl PicklsBackend {
         language_id: String,
         text: String,
     ) -> Result<InlineAssistResponse> {
-        let Some(api_key_cmd) = self.config.ai.openai.as_ref().map(|x| &x.api_key_cmd) else {
-            return Err(Error::new("No API key command found for OpenAI"));
+        let (api_key_cmd, model) = {
+            let openai_config = self
+                .config
+                .ai
+                .openai
+                .as_ref()
+                .ok_or("No OpenAI configuration found")?;
+            (
+                openai_config.api_key_cmd.clone(),
+                openai_config.model.clone(),
+            )
         };
+
         let context = InlineAssistTemplateContext { language_id, text };
         let prompt = render_template(&self.config.ai.inline_assist.template, context)
             .context("Inline assist prompt is not properly configured")?;
 
         // Send this over yonder to the background thread.
         self.rt.block_on(async move {
-            let api_key = get_command_output(api_key_cmd)
+            let api_key = get_command_output(&api_key_cmd)
                 .await
                 .context("getting api_key_cmd output")?;
-            let openai_answer = fetch_completion(api_key, prompt).await?;
+            let openai_answer = fetch_completion(api_key, model, prompt).await?;
             log::info!("openai_answer: {:?}", openai_answer);
-            <Result<InlineAssistResponse>>::Ok(openai_answer)
+            <Result<InlineAssistResponse>>::Err("nope".into()) // Ok(openai_answer)
         })
     }
 }

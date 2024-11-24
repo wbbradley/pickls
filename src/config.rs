@@ -122,7 +122,6 @@ pub struct PicklsAIConfig {
     // pub system_prompt: String,
     #[serde(default)]
     pub inline_assist: InlineAssistConfig,
-    #[allow(dead_code)]
     pub openai: Option<OpenAIConfig>,
 }
 #[derive(Clone, Debug, Deserialize, Default)]

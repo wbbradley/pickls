@@ -19,11 +19,11 @@ pub(crate) trait Context<T> {
     }
 }
 
-impl<T, E: std::fmt::Display> Context<T> for std::result::Result<T, E> {
+impl<T, E: std::fmt::Debug> Context<T> for std::result::Result<T, E> {
     #[track_caller]
     #[inline]
     fn context(self, context: &str) -> Result<T> {
-        self.map_err(|e| Error::new(format!("{context}: {e}")))
+        self.map_err(|e| Error::new(format!("{context}: {e:?}")))
     }
 }
 
@@ -73,6 +73,7 @@ impl From<regex::Error> for Error {
 }
 
 impl From<serde_yml::Error> for Error {
+    #[track_caller]
     fn from(error: serde_yml::Error) -> Self {
         Self {
             message: format!("yaml error: {error:?}"),
@@ -82,6 +83,7 @@ impl From<serde_yml::Error> for Error {
 }
 
 impl From<serde_json::Error> for Error {
+    #[track_caller]
     fn from(error: serde_json::Error) -> Self {
         Self {
             message: format!("json error: {error:?}"),
@@ -175,6 +177,16 @@ impl From<anyhow::Error> for Error {
     fn from(error: anyhow::Error) -> Self {
         Self {
             message: format!("anyhow error: {error:?}"),
+            location: Location::caller(),
+        }
+    }
+}
+
+impl From<reqwest::Error> for Error {
+    #[track_caller]
+    fn from(error: reqwest::Error) -> Self {
+        Self {
+            message: format!("reqwest error: {error:?}"),
             location: Location::caller(),
         }
     }

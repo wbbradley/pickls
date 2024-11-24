@@ -66,7 +66,7 @@ impl Client {
                 let response_text =
                     serde_json::to_string(&JsonRpcResponse::response(id, result)).unwrap();
                 let mut w = self.stdout.borrow_mut();
-                log::trace!("Sending response length: {}", response_text.len());
+                log::info!("Sending response length: {}", response_text.len());
                 write!(
                     w,
                     "Content-Length: {}\r\n\r\n{}",
@@ -77,10 +77,10 @@ impl Client {
             }
             Err(error) => {
                 let id = id.unwrap_or(MessageId::Number(0));
+                log::warn!("Sending error response: {}", error);
                 let response_text =
                     serde_json::to_string(&JsonRpcResponse::error(id, error)).unwrap();
                 let mut w = self.stdout.borrow_mut();
-                log::trace!("Sending error response length: {}", response_text.len());
                 write!(
                     w,
                     "Content-Length: {}\r\n\r\n{}",

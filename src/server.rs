@@ -67,6 +67,8 @@ where
                 log::info!("Shutting down");
                 break;
             }
+            DocumentDiagnosticRequest::METHOD => { /*ignore*/ }
+            WorkspaceDiagnosticRequest::METHOD => { /*ignore*/ }
             _ => {
                 log::warn!("Unhandled method: {}", rpc.method);
             }
