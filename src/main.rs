@@ -539,6 +539,7 @@ fn setup_logging(base_dirs: &xdg::BaseDirectories, level: log::LevelFilter) -> R
     simple_logging::log_to_file(log_file_path, level)?;
     Ok(())
 }
+
 fn read_config(base_dirs: &xdg::BaseDirectories) -> Option<PicklsConfig> {
     let config_filename = base_dirs.get_config_file(format!("{}.yaml", env!("CARGO_PKG_NAME")));
     log::info!("attempting to read configuration from {config_filename:?}");
