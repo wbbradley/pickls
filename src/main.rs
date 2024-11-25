@@ -279,7 +279,7 @@ impl LanguageServer for PicklsBackend {
         let range: Range = params.range;
         let file_contents = file_contents.as_ref();
         let text = slice_range(file_contents, range);
-        log::trace!("Got a selection: {text}");
+        log::trace!("Got a selection: {text} [range={range:#?}]", range = range);
         if text.is_empty() {
             log::info!("No selection found, returning early");
             return Ok(None);

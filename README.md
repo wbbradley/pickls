@@ -103,6 +103,21 @@ languages:
         use_stderr: false
         use_stdin: true
   lua:
+    linters:
+      - program: luacheck
+        args:
+          - --formatter
+          - plain
+          - --ranges
+          - --no-color
+          - '-'
+        pattern: 'stdin:(\d+):(\d+)-(\d+): (.*)'
+        line_match: 1
+        start_col_match: 2
+        end_col_match: 3
+        description_match: 4
+        use_stderr: false
+        use_stdin: true
     formatters:
       - program: lua-format
         args:
@@ -235,6 +250,7 @@ vim.api.nvim_create_autocmd({ "BufRead" }, {
   end,
 })
 
+-- Invoke LSP formatting on save.
 vim.api.nvim_create_autocmd("BufWritePre", {
   callback = function() vim.lsp.buf.format({ bufnr = bufnr }) end
 })
