@@ -260,8 +260,14 @@ impl LanguageServer for PicklsBackend {
         })
     }
     fn code_action(&mut self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
-        log::info!("Got a textDocument/codeAction request: {params:?}");
+        log::trace!("Got a textDocument/codeAction request: {params:#?}");
         // Get the text of the document from the document storage.
+        if let Some(filter) = params.context.only {
+            if !filter.contains(&CodeActionKind::new("pickls.inline-assist")) {
+                log::trace!("Client is filtering code actions, no pickls.inline-assist found, returning early");
+                return Ok(None);
+            }
+        }
         let uri = params.text_document.uri;
         let DocumentStorage {
             language_id,
@@ -273,7 +279,7 @@ impl LanguageServer for PicklsBackend {
         let range: Range = params.range;
         let file_contents = file_contents.as_ref();
         let text = slice_range(file_contents, range);
-        log::info!("Got a selection: {text}");
+        log::trace!("Got a selection: {text}");
         if text.is_empty() {
             log::info!("No selection found, returning early");
             return Ok(None);
@@ -288,7 +294,7 @@ impl LanguageServer for PicklsBackend {
         let result = (|| {
             let response = self.fetch_inline_assistance(language_id, text)?;
             Ok(Some(vec![CodeActionOrCommand::CodeAction(CodeAction {
-                title: "Inline Assist".to_string(),
+                title: "Pickls Inline Assist".to_string(),
                 kind: Some(CodeActionKind::new("pickls.inline-assist")),
                 edit: Some(WorkspaceEdit {
                     changes: Some(

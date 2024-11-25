@@ -67,7 +67,7 @@ pub async fn fetch_completion(
         .post("https://api.openai.com/v1/chat/completions")
         .header("Content-Type", "application/json")
         .bearer_auth(api_key.trim())
-        .body(serde_json::to_string(&json!({
+        .json(&json!({
         "model": model,
         "messages": [
             {
@@ -78,7 +78,7 @@ pub async fn fetch_completion(
                 "role": "user",
                 "content": instructions
             }
-        ]}))?)
+        ]}))
         .send()
         .await
         .context("openai post failed")?;
