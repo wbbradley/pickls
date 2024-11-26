@@ -202,12 +202,20 @@ fn ingest_linter_errors(
     let mut lsp_diagnostics: Vec<Diagnostic> = Default::default();
     let mut prior_line: Option<String> = None;
     let root_dir = std::path::PathBuf::from(root_dir);
-    let realpath_for_uri = std::path::PathBuf::from(uri.path().as_str()).canonicalize()?;
+    let realpath_for_uri = match std::fs::canonicalize(uri.path().as_str()) {
+        Ok(path) => path,
+        Err(_) => {
+            // Fallback to using an absolute path if canonicalization fails. It may fail if the
+            // file temporarily doesn't exist due to unlink + move operations that some editors
+            // (ie: neovim perform.)
+            std::path::absolute(uri.path().as_str())?
+        }
+    };
     for line in child_stdout.lines() {
         let line = line?;
         // log::info!("line: {line}");
         if let Some(caps) = re.captures(&line) {
-            log::info!("caps: {caps:?}");
+            log::trace!("caps: {caps:?}");
             if let Some(lsp_diagnostic) = convert_capture_to_diagnostic(
                 uri.path().as_str(),
                 &linter_config,
@@ -220,6 +228,9 @@ fn ingest_linter_errors(
                 }
                 let realpath_for_diagnostic = path.canonicalize()?;
                 if realpath_for_uri == realpath_for_diagnostic {
+                    // Note that this filtering can be avoided in cases that the linter is known to
+                    // only lint in the current file. This is intended to filter out diagnostics
+                    // from linters that scan multiple files.
                     lsp_diagnostics.push(lsp_diagnostic.into());
                 } else {
                     log::warn!(

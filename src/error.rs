@@ -4,7 +4,22 @@ use std::{num::ParseIntError, panic::Location};
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub(crate) trait Context<T> {
+    #[track_caller]
     fn context(self, context: &str) -> Result<T>;
+    #[allow(dead_code)]
+    #[track_caller]
+    fn context_with<F, E>(self, f: F) -> Result<T>
+    where
+        Self: Sized + Into<std::result::Result<T, E>>,
+        F: FnOnce() -> String,
+        E: std::fmt::Debug,
+    {
+        match self.into() {
+            Ok(value) => Ok(value),
+            Err(error) => Err(Error::new(format!("{}: {error:?}", f()))),
+        }
+    }
+    #[track_caller]
     fn ok_or_log(self, context: &str) -> Option<T>
     where
         Self: Sized,

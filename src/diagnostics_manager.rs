@@ -1,11 +1,10 @@
 use crate::prelude::*;
 
 pub(crate) type LinterName = String;
-pub(crate) type DiagnosticsStorage = HashMap<Uri, DocumentDiagnostics>;
 
 pub(crate) struct DiagnosticsManager {
     client: Client,
-    diagnostics_storage: DiagnosticsStorage,
+    diagnostics_storage: HashMap<Uri, DocumentDiagnostics>,
 }
 
 impl DiagnosticsManager {

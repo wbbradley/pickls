@@ -34,7 +34,7 @@ impl Job {
         let errno =
             Errno::from(unsafe { nix::libc::killpg(self.pid.as_raw(), nix::libc::SIGKILL) });
         if errno.is_error() {
-            log::warn!(
+            log::trace!(
                 "failed to kill job [pid={pid}, error={errno}]",
                 pid = self.pid
             );
