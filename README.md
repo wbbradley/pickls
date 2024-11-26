@@ -48,6 +48,7 @@ integration.
 
 ### Install pickls Binary
 
+Pickls is available via crates.io [here](https://crates.io/crates/pickls).
 Ensure you have a recent `stable` Rust toolchain and the cargo binary directory
 in your path:
 
