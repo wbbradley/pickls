@@ -19,13 +19,13 @@ integration.
 - Integrate command-line linting and formatting tools with your IDE.
 - Configure multiple linters and formatters for any language. This is ideal for
   projects with toolchains lacking native LSP integration.
-- Has a built-in code action for "Inline Assist" which can be used to replace
-  the current selection by sending it to an LLM. Currently OpenAI and Ollama are
-  supported.
-- Supports usage of [ctags](https://ctags.io/) on demand to provide workspace
+- Has a built-in code action for multi-LLM "Inline Assist" which can be used to
+  simultaneously query multiple LLMs for assistance. Currently OpenAI and Ollama
+  are supported.
+- Supports dynamic invocation of [ctags](https://ctags.io/) to provide workspace
   symbol information. (See configuration notes below.)
 
-#### Language Server Protocol - Server Capabilities
+#### Language Server Protocol - Primary Server Capabilities
 
 - `diagnosticProvider`
   ([spec](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#diagnosticOptions))
@@ -65,8 +65,8 @@ development purposes.
 
 ### User-level Configuration
 
-Complete config docs are available
-[here](https://docs.rs/pickls-config/latest/pickls_config/struct.PicklsConfig.html).
+Complete configuration source code is available
+[here](https://docs.rs/crate/pickls/latest/source/src/config.rs).
 
 User-level configuration lives in `"$XDG_CONFIG_HOME/pickls/pickls.yaml` where
 `$XDG_CONFIG_HOME` defaults to `"$HOME"/.config`. Pickls will respect your

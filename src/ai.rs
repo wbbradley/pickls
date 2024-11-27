@@ -85,7 +85,7 @@ pub async fn fetch_openai_completion(
     instructions: String,
 ) -> Result<OpenAIChatCompletion> {
     log::info!(
-        "fetching completion with {} of {}",
+        "fetching openai completion with {} of {}",
         &api_key[0..4],
         &instructions[0..10]
     );
@@ -119,7 +119,7 @@ pub async fn fetch_ollama_completion(
     model: String,
     prompt: String,
 ) -> Result<OllamaChatCompletion> {
-    log::info!(
+    log::error!(
         "fetching ollama completion with {} of {}",
         &api_address,
         &prompt,

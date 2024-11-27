@@ -1543,17 +1543,17 @@ dependencies = [
 
 [[package]]
 name = "pickls"
-version = "0.6.9"
+version = "0.6.11"
 dependencies = [
  "allms",
  "anyhow",
  "crossbeam-channel",
+ "futures",
  "handlebars",
  "libc",
  "log",
  "lsp-types",
  "nix",
- "pickls-config",
  "regex",
  "reqwest 0.12.9",
  "schemars",
@@ -1567,16 +1567,6 @@ dependencies = [
  "tokio",
  "toml",
  "xdg",
-]
-
-[[package]]
-name = "pickls-config"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccd26b6705b37caac3100b81eb0c60ded2f8c966c7d6b949b5576dad7400e7a9"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]

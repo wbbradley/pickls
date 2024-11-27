@@ -1,5 +1,6 @@
 pub(crate) use crate::ai::*;
 pub(crate) use crate::client::*;
+pub(crate) use crate::config::*;
 pub(crate) use crate::diagnostic::*;
 pub(crate) use crate::diagnostic_severity::*;
 pub(crate) use crate::diagnostics_manager::*;
@@ -18,7 +19,6 @@ pub(crate) use crate::workspace::*;
 pub use lsp_types::notification::*;
 pub use lsp_types::*;
 pub use nix::unistd::Pid;
-pub use pickls_config::*;
 pub use regex::Regex;
 pub use serde::de::DeserializeOwned;
 pub use serde::{Deserialize, Serialize};

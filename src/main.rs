@@ -8,6 +8,7 @@ extern crate serde_json;
 
 mod ai;
 mod client;
+mod config;
 mod diagnostic;
 mod diagnostic_severity;
 mod diagnostics_manager;
@@ -155,67 +156,77 @@ impl PicklsBackend {
         &self,
         language_id: String,
         text: String,
-    ) -> Result<InlineAssistResponse> {
+    ) -> Result<Vec<InlineAssistResponse>> {
         let context = InlineAssistTemplateContext { language_id, text };
-        let prompt = render_template(&self.config.ai.inline_assist_prompt_template, context)
+        let prompt = render_template(&self.config.ai.inline_assistant_prompt_template, context)
             .context("Inline assist prompt is not properly configured")?;
 
-        match self.config.ai.inline_assist_provider {
-            PicklsAIProvider::OpenAI => self.fetch_openai_inline_assistance(prompt),
-            PicklsAIProvider::Ollama => self.fetch_ollama_inline_assistance(prompt),
-        }
-    }
-    fn fetch_openai_inline_assistance(&self, prompt: String) -> Result<InlineAssistResponse> {
-        let (api_key_cmd, model) = {
-            let openai_config = self
+        self.rt.block_on(async move {
+            let futures = self
                 .config
                 .ai
-                .openai
-                .as_ref()
-                .ok_or("No OpenAI configuration found")?;
-            (
-                openai_config.api_key_cmd.clone(),
-                openai_config.model.clone(),
-            )
-        };
-
-        // Send this over yonder to the background thread.
-        self.rt.block_on(async move {
-            let api_key = get_command_output(&api_key_cmd)
-                .await
-                .context("getting api_key_cmd output")?;
-            let mut openai_answer = fetch_openai_completion(api_key, model.clone(), prompt).await?;
-            log::info!("openai_answer: {:?}", openai_answer);
-            Ok(InlineAssistResponse {
-                provider: "OpenAI".to_string(),
-                model,
-                code: std::mem::take(&mut openai_answer.choices[0].message.content),
-            })
+                .inline_assistants
+                .iter()
+                .map(|PicklsAIProviderModelRef { provider, model }| {
+                    let prompt_openai = prompt.clone();
+                    let prompt_ollama = prompt.clone();
+                    let future: std::pin::Pin<
+                        Box<dyn futures::Future<Output = Result<InlineAssistResponse>>>,
+                    > = match provider {
+                        PicklsAIProvider::OpenAI => Box::pin(async move {
+                            self.fetch_openai_inline_assistance(model.clone(), prompt_openai)
+                                .await
+                        }),
+                        PicklsAIProvider::Ollama => Box::pin(async move {
+                            self.fetch_ollama_inline_assistance(model.clone(), prompt_ollama)
+                                .await
+                        }),
+                    };
+                    future
+                })
+                .collect::<Vec<_>>();
+            let results = futures::future::join_all(futures).await;
+            Ok(results
+                .into_iter()
+                .inspect(|r| {
+                    if let Err(e) = r {
+                        log::error!("Error in inline-assist response: {e:?}");
+                    }
+                })
+                .flatten()
+                .collect())
         })
     }
-    fn fetch_ollama_inline_assistance(&self, prompt: String) -> Result<InlineAssistResponse> {
-        let (api_address, model) = {
-            let ollama_config = self
-                .config
-                .ai
-                .ollama
-                .as_ref()
-                .ok_or("No Ollama configuration found")?;
-            (
-                ollama_config.api_address.clone(),
-                ollama_config.model.clone(),
-            )
-        };
+    async fn fetch_openai_inline_assistance(
+        &self,
+        model: String,
+        prompt: String,
+    ) -> Result<InlineAssistResponse> {
+        let api_key_cmd = self.config.ai.openai.api_key_cmd.clone();
 
-        // Send this over yonder to the background thread.
-        self.rt.block_on(async move {
-            let ollama_answer = fetch_ollama_completion(api_address, model.clone(), prompt).await?;
-            log::info!("ollama_answer: {:?}", ollama_answer);
-            Ok(InlineAssistResponse {
-                provider: "Ollama".to_string(),
-                model,
-                code: ollama_answer.response,
-            })
+        let api_key = get_command_output(&api_key_cmd)
+            .await
+            .context("getting api_key_cmd output")?;
+        let mut openai_answer = fetch_openai_completion(api_key, model.clone(), prompt).await?;
+        log::info!("openai_answer: {:?}", openai_answer);
+        Ok(InlineAssistResponse {
+            provider: "OpenAI".to_string(),
+            model,
+            code: std::mem::take(&mut openai_answer.choices[0].message.content),
+        })
+    }
+    async fn fetch_ollama_inline_assistance(
+        &self,
+        model: String,
+        prompt: String,
+    ) -> Result<InlineAssistResponse> {
+        let api_address = self.config.ai.ollama.api_address.clone();
+        let ollama_answer = fetch_ollama_completion(api_address, model.clone(), prompt).await?;
+        log::info!("ollama_answer: {:?}", ollama_answer);
+        Ok(InlineAssistResponse {
+            provider: "Ollama".to_string(),
+            model,
+            code: ollama_answer.response,
         })
     }
 }
@@ -325,34 +336,41 @@ impl LanguageServer for PicklsBackend {
             make_progress_params("completed inline-assist", uri.clone(), version, 1, 1);
 
         let result = (|| {
-            let response = self.fetch_inline_assistance(language_id, text)?;
-            Ok(Some(vec![CodeActionOrCommand::CodeAction(CodeAction {
-                title: format!(
-                    "Pickls Inline Assist ({} - {})",
-                    response.provider, response.model
-                ),
-                kind: Some(CodeActionKind::new("pickls.inline-assist")),
-                edit: Some(WorkspaceEdit {
-                    changes: Some(
-                        [(
-                            uri,
-                            vec![TextEdit {
-                                range,
-                                new_text: response.code,
-                            }],
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                    document_changes: None,
-                    change_annotations: None,
-                }),
-                command: None,
-                diagnostics: None,
-                is_preferred: None,
-                disabled: None,
-                data: None,
-            })]))
+            Ok(Some(
+                // Iterate over all of the inline assistants and collect the results.
+                self.fetch_inline_assistance(language_id, text)?
+                    .into_iter()
+                    .map(|response| {
+                        CodeActionOrCommand::CodeAction(CodeAction {
+                            title: format!(
+                                "Pickls Inline Assist ({} - {})",
+                                response.provider, response.model
+                            ),
+                            kind: Some(CodeActionKind::new("pickls.inline-assist")),
+                            edit: Some(WorkspaceEdit {
+                                changes: Some(
+                                    [(
+                                        uri.clone(),
+                                        vec![TextEdit {
+                                            range,
+                                            new_text: response.code,
+                                        }],
+                                    )]
+                                    .into_iter()
+                                    .collect(),
+                                ),
+                                document_changes: None,
+                                change_annotations: None,
+                            }),
+                            command: None,
+                            diagnostics: None,
+                            is_preferred: None,
+                            disabled: None,
+                            data: None,
+                        })
+                    })
+                    .collect(),
+            ))
         })();
         self.client
             .send_notification::<Progress, _>(completed_progress)?;
