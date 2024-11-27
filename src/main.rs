@@ -156,10 +156,14 @@ impl PicklsBackend {
         &self,
         language_id: String,
         text: String,
-    ) -> Result<Vec<InlineAssistResponse>> {
+    ) -> Result<Option<Vec<InlineAssistResponse>>> {
+        if self.config.ai.inline_assistants.is_empty() {
+            return Ok(None);
+        }
         let context = InlineAssistTemplateContext { language_id, text };
         let prompt = render_template(&self.config.ai.inline_assistant_prompt_template, context)
             .context("Inline assist prompt is not properly configured")?;
+        let system_prompt = self.config.ai.system_prompt.clone();
 
         self.rt.block_on(async move {
             let futures = self
@@ -170,44 +174,60 @@ impl PicklsBackend {
                 .map(|PicklsAIProviderModelRef { provider, model }| {
                     let prompt_openai = prompt.clone();
                     let prompt_ollama = prompt.clone();
+                    let system_prompt = system_prompt.clone();
                     let future: std::pin::Pin<
                         Box<dyn futures::Future<Output = Result<InlineAssistResponse>>>,
                     > = match provider {
                         PicklsAIProvider::OpenAI => Box::pin(async move {
-                            self.fetch_openai_inline_assistance(model.clone(), prompt_openai)
-                                .await
+                            self.fetch_openai_inline_assistance(
+                                model.clone(),
+                                system_prompt,
+                                prompt_openai,
+                            )
+                            .await
                         }),
                         PicklsAIProvider::Ollama => Box::pin(async move {
-                            self.fetch_ollama_inline_assistance(model.clone(), prompt_ollama)
-                                .await
+                            self.fetch_ollama_inline_assistance(
+                                model.clone(),
+                                system_prompt,
+                                prompt_ollama,
+                            )
+                            .await
                         }),
                     };
                     future
                 })
                 .collect::<Vec<_>>();
             let results = futures::future::join_all(futures).await;
-            Ok(results
-                .into_iter()
-                .inspect(|r| {
-                    if let Err(e) = r {
-                        log::error!("Error in inline-assist response: {e:?}");
-                    }
-                })
-                .flatten()
-                .collect())
+            if results.is_empty() {
+                return Err("All inline assistants failed".into());
+            }
+            Ok(Some(
+                results
+                    .into_iter()
+                    .inspect(|r| {
+                        if let Err(e) = r {
+                            log::error!("Error in inline-assist response: {e:?}");
+                        }
+                    })
+                    .flatten()
+                    .collect(),
+            ))
         })
     }
     async fn fetch_openai_inline_assistance(
         &self,
         model: String,
         prompt: String,
+        system_prompt: String,
     ) -> Result<InlineAssistResponse> {
         let api_key_cmd = self.config.ai.openai.api_key_cmd.clone();
 
         let api_key = get_command_output(&api_key_cmd)
             .await
             .context("getting api_key_cmd output")?;
-        let mut openai_answer = fetch_openai_completion(api_key, model.clone(), prompt).await?;
+        let mut openai_answer =
+            fetch_openai_completion(api_key, model.clone(), system_prompt, prompt).await?;
         log::info!("openai_answer: {:?}", openai_answer);
         Ok(InlineAssistResponse {
             provider: "OpenAI".to_string(),
@@ -219,9 +239,11 @@ impl PicklsBackend {
         &self,
         model: String,
         prompt: String,
+        system_prompt: String,
     ) -> Result<InlineAssistResponse> {
         let api_address = self.config.ai.ollama.api_address.clone();
-        let ollama_answer = fetch_ollama_completion(api_address, model.clone(), prompt).await?;
+        let ollama_answer =
+            fetch_ollama_completion(api_address, model.clone(), system_prompt, prompt).await?;
         log::info!("ollama_answer: {:?}", ollama_answer);
         Ok(InlineAssistResponse {
             provider: "Ollama".to_string(),
@@ -339,6 +361,7 @@ impl LanguageServer for PicklsBackend {
             Ok(Some(
                 // Iterate over all of the inline assistants and collect the results.
                 self.fetch_inline_assistance(language_id, text)?
+                    .ok_or("No inline assistants found")?
                     .into_iter()
                     .map(|response| {
                         CodeActionOrCommand::CodeAction(CodeAction {

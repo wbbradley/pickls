@@ -75,13 +75,11 @@ pub struct OllamaChatCompletion {
     // ignore: pub usage: serde_json::Value,
 }
 
-const INLINE_ASSIST_SYSTEM_PROMPT: &str =
-    "You are a helpful code assistant. Reply with only code and/or comments that would be correct in the context. NEVER include markdown (like ```) annotating your response.";
-
 pub async fn fetch_openai_completion(
     //<T: JsonSchema + DeserializeOwned>(
     api_key: String,
     model: String,
+    system_prompt: String,
     instructions: String,
 ) -> Result<OpenAIChatCompletion> {
     log::info!(
@@ -99,7 +97,7 @@ pub async fn fetch_openai_completion(
         "messages": [
             {
                 "role": "system",
-                "content": INLINE_ASSIST_SYSTEM_PROMPT
+                "content": system_prompt,
             },
             {
                 "role": "user",
@@ -117,6 +115,7 @@ pub async fn fetch_ollama_completion(
     //<T: JsonSchema + DeserializeOwned>(
     api_address: String,
     model: String,
+    system_prompt: String,
     prompt: String,
 ) -> Result<OllamaChatCompletion> {
     log::error!(
@@ -130,7 +129,7 @@ pub async fn fetch_ollama_completion(
         .header("Content-Type", "application/json")
         .json(&json!({
             "model": model,
-            "system": INLINE_ASSIST_SYSTEM_PROMPT,
+            "system": system_prompt,
             "prompt": prompt,
             "stream": false
         }))

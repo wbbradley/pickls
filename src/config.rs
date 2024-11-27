@@ -119,7 +119,7 @@ pub struct PicklsAIProviderModelRef {
     pub model: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Default)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct PicklsAIConfig {
     #[serde(default = "default_inline_assist_system_prompt")]
     pub system_prompt: String,
@@ -130,6 +130,18 @@ pub struct PicklsAIConfig {
     pub openai: OpenAIConfig,
     #[serde(default)]
     pub ollama: OllamaConfig,
+}
+
+impl Default for PicklsAIConfig {
+    fn default() -> Self {
+        PicklsAIConfig {
+            system_prompt: default_inline_assist_system_prompt(),
+            inline_assistants: Vec::new(),
+            inline_assistant_prompt_template: default_inline_assist_prompt_template(),
+            openai: OpenAIConfig::default(),
+            ollama: OllamaConfig::default(),
+        }
+    }
 }
 
 /// Ollama is a AI model driver that can be run locally.
@@ -199,8 +211,9 @@ fn default_inline_assist_prompt_template() -> String {
         .to_string()
 }
 
+const INLINE_ASSIST_SYSTEM_PROMPT: &str =
+    "You are a helpful code assistant. Reply with only code and/or comments that would be correct in the context. NEVER include markdown (like ```) annotating your response.";
+
 fn default_inline_assist_system_prompt() -> String {
-    "You are an inline assistant for a code editor. Your response to user prompts will be used \
-        to replace code in the editor."
-        .to_string()
+    INLINE_ASSIST_SYSTEM_PROMPT.to_string()
 }
