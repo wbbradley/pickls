@@ -11,8 +11,8 @@ Inspired by tools like [ale](https://github.com/dense-analysis/ale),
 [none-ls](https://github.com/nvimtools/none-ls.nvim), and
 [diagnostic-languageserver](https://github.com/iamcco/diagnostic-languageserver),
 and [conform](https://github.com/oberblastmeister/conform), `pickls` offers a
-unified way to configure command-line linters and formatters with editor LSP
-integration.
+unified way to configure command-line linters, formatters and LLMs with editor
+LSP integration.
 
 ### Key Features
 
