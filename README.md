@@ -80,6 +80,16 @@ Project-level configuration is not yet implemented, but is on the roadmap.
 
 ```yaml
 ---
+ai:
+  inline_assistants:
+    - provider: ollama
+      model: tinyllama
+    - provider: ollama
+      model: llama3.2:latest
+    - provider: openai
+      model: gpt-4o
+    - provider: openai
+      model: gpt-4o-mini
 symbols:
   source: universal-ctags    # Currently only universal-ctags is supported.
   ctags_timeout_ms: 500      # 500ms is the default timeout.
