@@ -20,8 +20,8 @@ integration.
 - Configure multiple linters and formatters for any language. This is ideal for
   projects with toolchains lacking native LSP integration.
 - Has a built-in code action for "Inline Assist" which can be used to replace
-  the current selection by sending it to an LLM. (Currently only OpenAI is
-  supported, but I'll be adding more soon.)
+  the current selection by sending it to an LLM. Currently OpenAI and Ollama are
+  supported.
 - Supports usage of [ctags](https://ctags.io/) on demand to provide workspace
   symbol information. (See configuration notes below.)
 
