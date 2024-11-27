@@ -1,6 +1,6 @@
 [package]
 name = "pickls"
-version = "0.6.7"
+version = "0.6.8"
 edition = "2021"
 license = "MIT"
 keywords = ["LSP", "protocol", "command-line", "ide", "diagnostics"]
@@ -32,4 +32,4 @@ handlebars = "6.2.0"
 allms = "0.8.2"
 anyhow = "1.0.93"
 schemars = "0.8.21"
-pickls-config = "0.1.0"
+pickls-config = "0.1.5"

@@ -156,6 +156,16 @@ impl PicklsBackend {
         language_id: String,
         text: String,
     ) -> Result<InlineAssistResponse> {
+        let context = InlineAssistTemplateContext { language_id, text };
+        let prompt = render_template(&self.config.ai.inline_assist_prompt_template, context)
+            .context("Inline assist prompt is not properly configured")?;
+
+        match self.config.ai.inline_assist_provider {
+            PicklsAIProvider::OpenAI => self.fetch_openai_inline_assistance(prompt),
+            PicklsAIProvider::Ollama => self.fetch_ollama_inline_assistance(prompt),
+        }
+    }
+    fn fetch_openai_inline_assistance(&self, prompt: String) -> Result<InlineAssistResponse> {
         let (api_key_cmd, model) = {
             let openai_config = self
                 .config
@@ -169,19 +179,42 @@ impl PicklsBackend {
             )
         };
 
-        let context = InlineAssistTemplateContext { language_id, text };
-        let prompt = render_template(&self.config.ai.inline_assist.template, context)
-            .context("Inline assist prompt is not properly configured")?;
-
         // Send this over yonder to the background thread.
         self.rt.block_on(async move {
             let api_key = get_command_output(&api_key_cmd)
                 .await
                 .context("getting api_key_cmd output")?;
-            let mut openai_answer = fetch_completion(api_key, model, prompt).await?;
+            let mut openai_answer = fetch_openai_completion(api_key, model.clone(), prompt).await?;
             log::info!("openai_answer: {:?}", openai_answer);
             Ok(InlineAssistResponse {
+                provider: "OpenAI".to_string(),
+                model,
                 code: std::mem::take(&mut openai_answer.choices[0].message.content),
+            })
+        })
+    }
+    fn fetch_ollama_inline_assistance(&self, prompt: String) -> Result<InlineAssistResponse> {
+        let (api_address, model) = {
+            let ollama_config = self
+                .config
+                .ai
+                .ollama
+                .as_ref()
+                .ok_or("No Ollama configuration found")?;
+            (
+                ollama_config.api_address.clone(),
+                ollama_config.model.clone(),
+            )
+        };
+
+        // Send this over yonder to the background thread.
+        self.rt.block_on(async move {
+            let ollama_answer = fetch_ollama_completion(api_address, model.clone(), prompt).await?;
+            log::info!("ollama_answer: {:?}", ollama_answer);
+            Ok(InlineAssistResponse {
+                provider: "Ollama".to_string(),
+                model,
+                code: ollama_answer.response,
             })
         })
     }
@@ -294,7 +327,10 @@ impl LanguageServer for PicklsBackend {
         let result = (|| {
             let response = self.fetch_inline_assistance(language_id, text)?;
             Ok(Some(vec![CodeActionOrCommand::CodeAction(CodeAction {
-                title: "Pickls Inline Assist".to_string(),
+                title: format!(
+                    "Pickls Inline Assist ({} - {})",
+                    response.provider, response.model
+                ),
                 kind: Some(CodeActionKind::new("pickls.inline-assist")),
                 edit: Some(WorkspaceEdit {
                     changes: Some(
