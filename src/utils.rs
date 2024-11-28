@@ -108,7 +108,7 @@ pub fn outdent_text(text: &str) -> String {
         .join("\n")
 }
 
-pub async fn get_command_output(cmd: &[String]) -> Result<String> {
+pub async fn get_command_output(cmd: Vec<String>) -> Result<String> {
     use tokio::process::Command;
     let output = Command::new(&cmd[0])
         .args(&cmd[1..])

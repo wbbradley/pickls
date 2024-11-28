@@ -225,9 +225,7 @@ impl PicklsBackend {
         prompt: String,
         system_prompt: String,
     ) -> Result<InlineAssistResponse> {
-        let api_key_cmd = self.config.ai.openai.api_key_cmd.clone();
-
-        let api_key = get_command_output(&api_key_cmd)
+        let api_key = get_command_output(self.config.ai.openai.api_key_cmd.clone())
             .await
             .context("getting api_key_cmd output")?;
         let mut openai_answer =
@@ -245,6 +243,10 @@ impl PicklsBackend {
         prompt: String,
         system_prompt: String,
     ) -> Result<InlineAssistResponse> {
+        if self.config.ai.ollama.include_workspace_files {
+            let _files: Vec<_> = self.workspace.files().await.collect();
+            log::error!("fetch_ollama_inline_assistance: files={_files:?}");
+        }
         let api_address = self.config.ai.ollama.api_address.clone();
         let ollama_answer =
             fetch_ollama_completion(api_address, model.clone(), system_prompt, prompt).await?;

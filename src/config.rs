@@ -158,11 +158,14 @@ pub struct OllamaConfig {
     /// Defaults to http://localhost:11434/api/generate.
     #[serde(default = "default_ollama_api_address")]
     pub api_address: String,
+    #[serde(default)]
+    pub include_workspace_files: bool,
 }
 
 impl Default for OllamaConfig {
     fn default() -> Self {
         OllamaConfig {
+            include_workspace_files: true,
             api_address: default_ollama_api_address(),
         }
     }

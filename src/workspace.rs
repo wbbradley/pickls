@@ -23,4 +23,28 @@ impl Workspace {
     pub(crate) fn folders(&self) -> impl Iterator<Item = &PathBuf> {
         self.folders.iter()
     }
+    pub(crate) async fn files(&self) -> impl Iterator<Item = PathBuf> {
+        let futures = self.folders.iter().map(|folder| {
+            get_command_output(
+                [
+                    "git".to_string(),
+                    "-C".to_string(),
+                    folder.to_str().unwrap().to_string(),
+                    "ls-files".to_string(),
+                ]
+                .into_iter()
+                .collect(),
+            )
+        });
+        join_all(futures)
+            .await
+            .into_iter()
+            .inspect(|res| {
+                if let Err(e) = res {
+                    log::error!("Failed to list files in git repository: {}", e);
+                }
+            })
+            .flatten()
+            .map(PathBuf::from)
+    }
 }
