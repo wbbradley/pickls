@@ -40,6 +40,7 @@ LSP integration.
 
 ## Why Use pickls?
 
+- You'd like to have LSP support for LLM completion as a code action.
 - Avoid installing and configuring separate plugins or language servers for each
   tool in your workflow.
 - Utilize a seamless LSP integration for command-line oriented toolchains.
@@ -263,8 +264,11 @@ vim.api.nvim_create_autocmd({ "BufRead" }, {
 
 -- Invoke LSP formatting on save.
 vim.api.nvim_create_autocmd("BufWritePre", {
-  callback = function() vim.lsp.buf.format({ bufnr = bufnr }) end
+  callback = function() vim.lsp.buf.format() end
 })
+
+-- You'll want to enable a shortcut for code actions in order to trigger inline-assist.
+vim.keymap.set('n', '<leader>a', function() vim.lsp.buf.code_action() end)
 ```
 
 ### Zed
