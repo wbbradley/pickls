@@ -2,6 +2,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::prelude::*;
+use std::rc::Rc;
 
 #[macro_use]
 extern crate serde_json;
@@ -20,6 +21,7 @@ mod error;
 mod job;
 mod language_server;
 mod prelude;
+mod progress;
 mod server;
 mod tags;
 mod tool;
@@ -156,6 +158,7 @@ impl PicklsBackend {
         &self,
         language_id: String,
         text: String,
+        progress_notifier: Rc<ProgressNotifier>,
     ) -> Result<Option<Vec<InlineAssistResponse>>> {
         if self.config.ai.inline_assistants.is_empty() {
             return Ok(None);
@@ -172,33 +175,34 @@ impl PicklsBackend {
                 .inline_assistants
                 .iter()
                 .map(|PicklsAIProviderModelRef { provider, model }| {
-                    let prompt_openai = prompt.clone();
-                    let prompt_ollama = prompt.clone();
+                    let prompt = prompt.clone();
                     let system_prompt = system_prompt.clone();
-                    let future: std::pin::Pin<
-                        Box<dyn futures::Future<Output = Result<InlineAssistResponse>>>,
-                    > = match provider {
-                        PicklsAIProvider::OpenAI => Box::pin(async move {
-                            self.fetch_openai_inline_assistance(
-                                model.clone(),
-                                system_prompt,
-                                prompt_openai,
-                            )
-                            .await
-                        }),
-                        PicklsAIProvider::Ollama => Box::pin(async move {
-                            self.fetch_ollama_inline_assistance(
-                                model.clone(),
-                                system_prompt,
-                                prompt_ollama,
-                            )
-                            .await
-                        }),
-                    };
-                    future
+                    let progress_notifier = progress_notifier.clone();
+                    Box::pin(async move {
+                        let ret = match provider {
+                            Provider::OpenAI => {
+                                self.fetch_openai_inline_assistance(
+                                    model.clone(),
+                                    prompt,
+                                    system_prompt,
+                                )
+                                .await
+                            }
+                            Provider::Ollama => {
+                                self.fetch_ollama_inline_assistance(
+                                    model.clone(),
+                                    prompt,
+                                    system_prompt,
+                                )
+                                .await
+                            }
+                        };
+                        progress_notifier.notify();
+                        ret
+                    })
                 })
                 .collect::<Vec<_>>();
-            let results = futures::future::join_all(futures).await;
+            let results = join_all(futures).await;
             if results.is_empty() {
                 return Err("All inline assistants failed".into());
             }
@@ -351,16 +355,36 @@ impl LanguageServer for PicklsBackend {
             return Ok(None);
         }
 
+        let total_inline_assistants = self.config.ai.inline_assistants.len();
+
         // Always create at least one progress message to denote the current update.
-        let progress = make_progress_params("running inline-assist", uri.clone(), version, 0, 1);
+        let progress = make_progress_params(
+            "running inline-assist",
+            uri.clone(),
+            version,
+            0,
+            total_inline_assistants,
+        );
         self.client.send_notification::<Progress, _>(progress)?;
-        let completed_progress =
-            make_progress_params("completed inline-assist", uri.clone(), version, 1, 1);
+
+        let progress_notifier = Rc::new(ProgressNotifier::new(
+            self.client.clone(),
+            uri.clone(),
+            version,
+            total_inline_assistants,
+        ));
+        let completed_progress = make_progress_params(
+            "completed inline-assist",
+            uri.clone(),
+            version,
+            total_inline_assistants,
+            total_inline_assistants,
+        );
 
         let result = (|| {
             Ok(Some(
                 // Iterate over all of the inline assistants and collect the results.
-                self.fetch_inline_assistance(language_id, text)?
+                self.fetch_inline_assistance(language_id, text, progress_notifier)?
                     .ok_or("No inline assistants found")?
                     .into_iter()
                     .map(|response| {

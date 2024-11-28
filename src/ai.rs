@@ -118,7 +118,7 @@ pub async fn fetch_ollama_completion(
     system_prompt: String,
     prompt: String,
 ) -> Result<OllamaChatCompletion> {
-    log::error!(
+    log::info!(
         "fetching ollama completion with {} of {}",
         &api_address,
         &prompt,

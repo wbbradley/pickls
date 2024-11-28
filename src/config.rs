@@ -115,7 +115,7 @@ pub struct PicklsFormatterConfig {
 
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct PicklsAIProviderModelRef {
-    pub provider: PicklsAIProvider,
+    pub provider: Provider,
     pub model: String,
 }
 
@@ -174,7 +174,7 @@ fn default_ollama_api_address() -> String {
 
 #[derive(Clone, Debug, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum PicklsAIProvider {
+pub enum Provider {
     #[default]
     OpenAI,
     Ollama,
