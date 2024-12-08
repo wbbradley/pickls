@@ -163,11 +163,37 @@ impl PicklsBackend {
         if self.config.ai.inline_assistants.is_empty() {
             return Ok(None);
         }
-        let context = InlineAssistTemplateContext { language_id, text };
+        let mut files: HashMap<String, String> = Default::default();
+        if self.config.ai.inline_assistant_include_workspace_files {
+            for file in self.rt.block_on(self.workspace.files()) {
+                if !include_file_in_prompt(&file) {
+                    log::warn!(
+                        "[fetch_inline_assistance] skipping file: '{file}'",
+                        file = file.display()
+                    );
+                    continue;
+                }
+                if let Ok(contents) = std::fs::read_to_string(&file) {
+                    files.insert(file.display().to_string(), contents);
+                } else {
+                    log::warn!(
+                        "[fetch_inline_assistance] failed to read file: '{}'",
+                        file.display()
+                    );
+                }
+            }
+        }
+
+        let context = InlineAssistTemplateContext {
+            language_id,
+            text,
+            include_workspace_files: self.config.ai.inline_assistant_include_workspace_files,
+            files,
+        };
         let prompt = render_template(&self.config.ai.inline_assistant_prompt_template, context)
             .context("Inline assist prompt is not properly configured")?;
         let system_prompt = self.config.ai.system_prompt.clone();
-
+        log::info!("prompt: {prompt}");
         self.rt.block_on(async move {
             let futures = self
                 .config
@@ -243,10 +269,6 @@ impl PicklsBackend {
         prompt: String,
         system_prompt: String,
     ) -> Result<InlineAssistResponse> {
-        if self.config.ai.ollama.include_workspace_files {
-            let _files: Vec<_> = self.workspace.files().await.collect();
-            log::error!("fetch_ollama_inline_assistance: files={_files:?}");
-        }
         let api_address = self.config.ai.ollama.api_address.clone();
         let ollama_answer =
             fetch_ollama_completion(api_address, model.clone(), system_prompt, prompt).await?;
@@ -294,6 +316,7 @@ impl LanguageServer for PicklsBackend {
                         },
                     },
                 )),
+
                 document_formatting_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Options(
                     CodeActionOptions {
@@ -327,7 +350,7 @@ impl LanguageServer for PicklsBackend {
             },
             server_info: Some(ServerInfo {
                 name: "pickls".to_string(),
-                version: None,
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
             }),
         })
     }
@@ -346,8 +369,6 @@ impl LanguageServer for PicklsBackend {
             file_contents,
             version,
         } = self.get_document(&uri)?;
-        // Write a function that takes the file contents and the range from within the params and
-        // returns a slice of the file contents that corresponds to the range.
         let range: Range = params.range;
         let file_contents = file_contents.as_ref();
         let text = slice_range(file_contents, range);
@@ -455,11 +476,11 @@ impl LanguageServer for PicklsBackend {
         );
         for formatter_config in language_config.formatters.iter() {
             let program = formatter_config.program.clone();
-            file_contents = run_formatter(
+            file_contents = match run_formatter(
                 formatter_config,
                 &self.workspace,
                 &language_config.root_markers,
-                file_contents,
+                file_contents.clone(),
                 uri.clone(),
             )
             .inspect(|formatted_content| {
@@ -472,14 +493,37 @@ impl LanguageServer for PicklsBackend {
 
                 // Create a TextEdit that replaces the whole document
             })
-            .context("formatter error")?;
+            .context("formatter error")
+            {
+                Ok(file_contents) => file_contents,
+                Err(e) => {
+                    self.client
+                        .show_message(
+                            MessageType::ERROR,
+                            format!(
+                                "Formatter {program} failed for url '{uri}' [error={e:?}]",
+                                uri = uri.as_str(),
+                                program = program,
+                                e = e
+                            ),
+                        )
+                        .unwrap();
+                    log::error!(
+                        "Formatter {program} failed for url '{uri}' [error={e:?}]",
+                        uri = uri.as_str(),
+                        program = program,
+                        e = e
+                    );
+                    break;
+                }
+            };
         }
         Ok(Some(vec![TextEdit {
             range: Range {
                 start: Position::new(0, 0),
                 end: Position::new(u32::MAX, u32::MAX),
             },
-            new_text: file_contents.clone(),
+            new_text: file_contents,
         }]))
     }
 
@@ -540,6 +584,14 @@ impl LanguageServer for PicklsBackend {
         })
         .context("did_open")
     }
+    fn will_save(&mut self, params: WillSaveTextDocumentParams) -> Result<()> {
+        log::info!(
+            "[{site}] will_save called [uri={uri}]",
+            site = self.get_workspace_name(),
+            uri = params.text_document.uri.as_str()
+        );
+        Ok(())
+    }
     fn did_change(&mut self, mut params: DidChangeTextDocumentParams) -> Result<()> {
         log::trace!(
             "[{site}] did_change called [params=...]",
@@ -552,7 +604,7 @@ impl LanguageServer for PicklsBackend {
         let language_id = {
             let Some(document_storage) = self.document_storage.get_mut(&uri) else {
                 self.client
-                    .log_message(
+                    .show_message(
                         MessageType::WARNING,
                         format!("no document found for uri {uri}", uri = uri.as_str()),
                     )

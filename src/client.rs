@@ -20,6 +20,19 @@ impl Client {
             },
         )
     }
+    pub fn show_message(
+        &self,
+        message_type: MessageType,
+        message: impl Into<String>,
+    ) -> Result<()> {
+        self.send_packet(
+            "window/showMessage",
+            ShowMessageParams {
+                typ: message_type,
+                message: message.into(),
+            },
+        )
+    }
     pub fn send_notification<N: Notification, M: Serialize>(&self, notification: M) -> Result<()> {
         self.send_packet(N::METHOD, notification)
     }

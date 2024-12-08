@@ -5,6 +5,8 @@ use schemars::JsonSchema;
 pub struct InlineAssistTemplateContext {
     pub language_id: String,
     pub text: String,
+    pub include_workspace_files: bool,
+    pub files: HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

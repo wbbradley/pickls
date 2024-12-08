@@ -9,7 +9,7 @@ pub trait LanguageServer {
     fn did_change_configuration(&mut self, dccp: DidChangeConfigurationParams) -> Result<()>;
     fn did_close(&mut self, params: DidCloseTextDocumentParams) -> Result<()>;
     fn did_open(&mut self, params: DidOpenTextDocumentParams) -> Result<()>;
-    // fn will_save(&mut self, params: WillSaveTextDocumentParams) -> Result<()>;
+    fn will_save(&mut self, params: WillSaveTextDocumentParams) -> Result<()>;
     // fn did_save(&mut self, params: DidSaveTextDocumentParams) -> Result<()>;
     fn execute_command(&mut self, params: ExecuteCommandParams) -> Result<Option<Value>>;
     fn formatting(&mut self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>>;

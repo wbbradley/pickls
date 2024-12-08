@@ -59,6 +59,11 @@ where
                     .did_close(rpc.take_params()?)
                     .ok_or_log("Error in did_close");
             }
+            WillSaveTextDocument::METHOD => {
+                backend
+                    .will_save(rpc.take_params()?)
+                    .ok_or_log("Error in will_save");
+            }
             Formatting::METHOD => {
                 client.write_response(id, backend.formatting(rpc.take_params()?))?;
             }

@@ -126,6 +126,8 @@ pub struct PicklsAIConfig {
     pub inline_assistants: Vec<PicklsAIProviderModelRef>,
     #[serde(default = "default_inline_assist_prompt_template")]
     pub inline_assistant_prompt_template: String,
+    #[serde(default = "default_false")]
+    pub inline_assistant_include_workspace_files: bool,
     #[serde(default)]
     pub openai: OpenAIConfig,
     #[serde(default)]
@@ -138,6 +140,7 @@ impl Default for PicklsAIConfig {
             system_prompt: default_inline_assist_system_prompt(),
             inline_assistants: Vec::new(),
             inline_assistant_prompt_template: default_inline_assist_prompt_template(),
+            inline_assistant_include_workspace_files: true,
             openai: OpenAIConfig::default(),
             ollama: OllamaConfig::default(),
         }
@@ -158,14 +161,11 @@ pub struct OllamaConfig {
     /// Defaults to http://localhost:11434/api/generate.
     #[serde(default = "default_ollama_api_address")]
     pub api_address: String,
-    #[serde(default)]
-    pub include_workspace_files: bool,
 }
 
 impl Default for OllamaConfig {
     fn default() -> Self {
         OllamaConfig {
-            include_workspace_files: true,
             api_address: default_ollama_api_address(),
         }
     }
@@ -206,16 +206,28 @@ fn default_openai_api_key_cmd() -> Vec<String> {
 }
 
 fn default_inline_assist_prompt_template() -> String {
-    "I'm working within the {{language_id}} language. If I show you code below, then please \
-        rewrite it to make improvements as you see fit. If I show you a question or directive, \
-        write code to satisfy the question or directive. Never use markdown to format your response. \
-        For example, do not use triple backticks (```). Always include type annotations where possible.\n\n\
-        {{text}}\n"
+    "\
+{{#if include_workspace_files }}
+{{#each files}}
+------
+File: {{@key}}
+
+{{this}}
+{{/each}}
+------
+{{/if}}
+Notes: We're working within the {{language_id}} language. If I show you code below, then please
+rewrite it to make improvements as you see fit. If I show you a question or directive,
+write code to satisfy the question or directive. Never use markdown to format your response.
+Never print ```. Always include type annotations where possible.
+
+------
+{{text}}\n"
         .to_string()
 }
 
 const INLINE_ASSIST_SYSTEM_PROMPT: &str =
-    "You are a helpful code assistant. Reply with only code and/or comments that would be correct in the context. NEVER include markdown (like ```) annotating your response.";
+    "You are a helpful inline code assistant. Reply concisely. Never include markdown (like ```) in your response.";
 
 fn default_inline_assist_system_prompt() -> String {
     INLINE_ASSIST_SYSTEM_PROMPT.to_string()

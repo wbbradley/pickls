@@ -25,16 +25,14 @@ impl Workspace {
     }
     pub(crate) async fn files(&self) -> impl Iterator<Item = PathBuf> {
         let futures = self.folders.iter().map(|folder| {
-            get_command_output(
-                [
-                    "git".to_string(),
-                    "-C".to_string(),
-                    folder.to_str().unwrap().to_string(),
-                    "ls-files".to_string(),
-                ]
-                .into_iter()
-                .collect(),
-            )
+            let git_ls_files_cmd = vec![
+                "git".to_string(),
+                "-C".to_string(),
+                folder.to_str().unwrap().to_string(),
+                "ls-files".to_string(),
+                "-z".to_string(),
+            ];
+            get_command_output(git_ls_files_cmd)
         });
         join_all(futures)
             .await
@@ -45,6 +43,13 @@ impl Workspace {
                 }
             })
             .flatten()
+            .flat_map(|output| {
+                output
+                    .split('\0')
+                    .filter(|&filename| !filename.is_empty())
+                    .map(PathBuf::from)
+                    .collect::<Vec<_>>()
+            })
             .map(PathBuf::from)
     }
 }

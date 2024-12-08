@@ -2,6 +2,7 @@ use crate::error::{Context as _, Error, Result};
 use handlebars::Handlebars;
 use lsp_types::Range;
 use serde::Serialize;
+use std::path::Path;
 use std::process;
 pub use sysinfo::{Pid, System};
 
@@ -126,7 +127,16 @@ pub async fn get_command_output(cmd: Vec<String>) -> Result<String> {
 
 pub fn render_template<T: Serialize>(template: &str, context: T) -> Result<String> {
     let mut reg = Handlebars::new();
+    // Avoid head-scratching.
+    reg.set_strict_mode(true);
     // Avoid all escaping.
     reg.register_escape_fn(|x| x.to_string());
     Ok(reg.render_template(template, &context)?)
+}
+
+pub fn include_file_in_prompt(file: &Path) -> bool {
+    let filename = file.to_str();
+    filename.map_or(false, |f| {
+        !(f.ends_with(".lock") || f.ends_with(".json") || f.ends_with(".git") || f.ends_with(".o"))
+    })
 }
