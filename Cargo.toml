@@ -1,7 +1,7 @@
 [package]
 name = "pickls"
 version = "0.6.15"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 keywords = ["LSP", "protocol", "command-line", "ide", "diagnostics"]
 categories = ["development-tools", "text-editors"]

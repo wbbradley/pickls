@@ -1,10 +1,11 @@
-use crate::error::{Context as _, Error, Result};
+use std::{path::Path, process};
+
 use handlebars::Handlebars;
 use lsp_types::Range;
 use serde::Serialize;
-use std::path::Path;
-use std::process;
 pub use sysinfo::{Pid, System};
+
+use crate::error::{Context as _, Error, Result};
 
 pub fn fetch_parent_process_info() -> String {
     let mut system = System::new_all();
@@ -134,9 +135,10 @@ pub fn render_template<T: Serialize>(template: &str, context: T) -> Result<Strin
     Ok(reg.render_template(template, &context)?)
 }
 
-pub fn include_file_in_prompt(file: &Path) -> bool {
-    let filename = file.to_str();
-    filename.map_or(false, |f| {
-        !(f.ends_with(".lock") || f.ends_with(".json") || f.ends_with(".git") || f.ends_with(".o"))
+pub fn include_file_in_prompt(filename: &Path) -> bool {
+    filename.to_str().is_some_and(|f| {
+        [".lock", ".json", ".git", ".o"]
+            .into_iter()
+            .all(|ext| !f.ends_with(ext))
     })
 }

@@ -359,7 +359,9 @@ impl LanguageServer for PicklsBackend {
         // Get the text of the document from the document storage.
         if let Some(filter) = params.context.only {
             if !filter.contains(&CodeActionKind::new("pickls.inline-assist")) {
-                log::trace!("Client is filtering code actions, no pickls.inline-assist found, returning early");
+                log::trace!(
+                    "Client is filtering code actions, no pickls.inline-assist found, returning early"
+                );
                 return Ok(None);
             }
         }

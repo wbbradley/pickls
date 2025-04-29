@@ -1,9 +1,12 @@
+use std::{
+    io::{BufRead, BufReader, Read, Write},
+    os::unix::process::CommandExt as _,
+};
+
+use nix::unistd::Pid;
 use regex::Captures;
 
 use crate::prelude::*;
-use nix::unistd::Pid;
-use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::process::CommandExt as _;
 
 fn get_root_dir(filename: &str, workspace: &Workspace, root_markers: &[String]) -> Result<String> {
     let starting_path = std::path::PathBuf::from(filename);
@@ -90,6 +93,7 @@ pub fn run_linter(
     }
     drop(stdin);
 
+    let program = linter_config.program.clone();
     let child_pid = Pid::from_raw(child.id() as i32);
     // TODO: maybe box these to enable vtbl-style polymorphism here.
     if let Err(error) = if linter_config.use_stderr {
@@ -115,6 +119,15 @@ pub fn run_linter(
     } {
         log::error!("[run_linter/spawn-ingest] error: {error:?}");
     }
+    child
+        .wait()
+        .inspect(|status| {
+            log::info!(
+                "linter program '{program}' exited with status: {status:?} [pid={pid}]",
+                pid = child_pid,
+            );
+        })
+        .inspect_err(|err| log::warn!("linter program '{program}' error: {err}",))?;
     Ok(child_pid)
 }
 
@@ -132,7 +145,8 @@ fn convert_capture_to_diagnostic(
             if linter_config.line_match >= caps_len {
                 log::error!(
                     "invalid description_match in linter configuration of `{program}`: pattern only captures {caps_len} groups but description_match = {i}.",
-                    program = linter_config.program);
+                    program = linter_config.program
+                );
                 return None;
             }
             caps.get(i as usize).map(|x| x.as_str().to_string())
@@ -153,7 +167,8 @@ fn convert_capture_to_diagnostic(
         log::error!(
             "invalid line_match in linter configuration of `{program}`: pattern only captures {caps_len} groups but line_match = {line_match}.",
             line_match = linter_config.line_match,
-            program = linter_config.program);
+            program = linter_config.program
+        );
         return None;
     }
     let line: u32 = caps
@@ -222,6 +237,7 @@ fn ingest_linter_errors(
                 caps,
                 &prior_line,
             ) {
+                // log::info!("diagnostic: {lsp_diagnostic:?}");
                 let mut path = std::path::PathBuf::from(lsp_diagnostic.filename.clone());
                 if path.is_relative() {
                     path = root_dir.join(path);
@@ -235,7 +251,7 @@ fn ingest_linter_errors(
                 } else {
                     log::warn!(
                         "ignoring diagnostic for {uri} because it is not in the current document [filename={realpath_for_diagnostic:?}]",
-                        uri=uri.as_str(),
+                        uri = uri.as_str(),
                     );
                 }
             }

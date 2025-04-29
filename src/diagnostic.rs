@@ -1,5 +1,6 @@
 use crate::prelude::*;
 
+#[derive(Debug)]
 pub struct PicklsDiagnostic {
     pub linter: String,
     pub filename: String,

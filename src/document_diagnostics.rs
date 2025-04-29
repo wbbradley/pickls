@@ -31,7 +31,10 @@ impl DocumentDiagnostics {
     ) -> bool {
         let max_version = self.versions.last().cloned().unwrap_or(version);
         if max_version > version {
-            log::info!("ignoring diagnostics for version {version} of {uri} from linter {linter_name} because it is older than the most recent version {max_version}", uri=uri.as_str());
+            log::info!(
+                "ignoring diagnostics for version {version} of {uri} from linter {linter_name} because it is older than the most recent version {max_version}",
+                uri = uri.as_str()
+            );
             return false;
         }
         if version > max_version {
@@ -100,7 +103,10 @@ pub fn make_progress_params<T: Into<String>>(
     } else {
         Some((available as f64 / expected as f64 * 100.0) as u32)
     };
-    log::info!("publishing progress [uri={uri}, version={version}, available={available}, expected={expected}, percentage={percentage:?}]", uri=uri.as_str());
+    log::info!(
+        "publishing progress [uri={uri}, version={version}, available={available}, expected={expected}, percentage={percentage:?}]",
+        uri = uri.as_str()
+    );
 
     ProgressParams {
         token: progress_token(&uri, version),

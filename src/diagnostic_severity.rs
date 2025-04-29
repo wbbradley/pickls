@@ -1,5 +1,6 @@
 use crate::prelude::*;
 
+#[derive(Debug)]
 pub struct PicklsDiagnosticSeverity {
     pub severity: String,
 }

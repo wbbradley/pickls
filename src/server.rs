@@ -1,6 +1,6 @@
-use crate::prelude::*;
-
 use lsp_types::request::*;
+
+use crate::prelude::*;
 
 pub fn run_server<F, T>(f: F) -> Result<()>
 where
@@ -72,6 +72,7 @@ where
                 log::info!("Shutting down");
                 break;
             }
+            Cancel::METHOD => { /* ignore */ }
             DocumentDiagnosticRequest::METHOD => { /*ignore*/ }
             WorkspaceDiagnosticRequest::METHOD => { /*ignore*/ }
             DidSaveTextDocument::METHOD => { /*ignore*/ }

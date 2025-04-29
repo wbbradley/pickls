@@ -13,7 +13,7 @@ impl Workspace {
         }
     }
     pub(crate) fn add_folder(&mut self, folder: Uri) {
-        if folder.scheme().map_or(false, |x| x.as_str() == "file") {
+        if folder.scheme().is_some_and(|x| x.as_str() == "file") {
             let file_path = PathBuf::from(folder.path().as_str());
             self.folders.insert(file_path);
             return;
@@ -50,6 +50,5 @@ impl Workspace {
                     .map(PathBuf::from)
                     .collect::<Vec<_>>()
             })
-            .map(PathBuf::from)
     }
 }

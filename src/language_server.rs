@@ -1,7 +1,9 @@
 #![allow(unused)]
-use crate::prelude::*;
-use serde::de::{self, Deserialize, Deserializer, Visitor};
 use std::io::BufRead;
+
+use serde::de::{self, Deserialize, Deserializer, Visitor};
+
+use crate::prelude::*;
 
 pub trait LanguageServer {
     fn code_action(&mut self, params: CodeActionParams) -> Result<Option<CodeActionResponse>>;
@@ -76,7 +78,7 @@ impl<'de> Deserialize<'de> for MessageId {
     {
         struct MessageIdVisitor;
 
-        impl<'de> Visitor<'de> for MessageIdVisitor {
+        impl Visitor<'_> for MessageIdVisitor {
             type Value = MessageId;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {

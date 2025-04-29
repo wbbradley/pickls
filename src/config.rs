@@ -226,8 +226,7 @@ Never print ```. Always include type annotations where possible.
         .to_string()
 }
 
-const INLINE_ASSIST_SYSTEM_PROMPT: &str =
-    "You are a helpful inline code assistant. Reply concisely. Never include markdown (like ```) in your response.";
+const INLINE_ASSIST_SYSTEM_PROMPT: &str = "You are a helpful inline code assistant. Reply concisely. Never include markdown (like ```) in your response.";
 
 fn default_inline_assist_system_prompt() -> String {
     INLINE_ASSIST_SYSTEM_PROMPT.to_string()
