@@ -704,7 +704,7 @@ fn setup_logging(base_dirs: &xdg::BaseDirectories, level: log::LevelFilter) -> R
 }
 
 fn read_config(base_dirs: &xdg::BaseDirectories) -> Option<PicklsConfig> {
-    let config_filename = base_dirs.get_config_file(format!("{}.yaml", env!("CARGO_PKG_NAME")));
+    let config_filename = base_dirs.get_config_file(format!("{}.yaml", env!("CARGO_PKG_NAME")))?;
     log::info!("attempting to read configuration from {config_filename:?}");
     let config = parse_config(
         read_to_string(config_filename)
@@ -734,7 +734,7 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let base_dirs = xdg::BaseDirectories::with_prefix(env!("CARGO_PKG_NAME")).unwrap();
+    let base_dirs = xdg::BaseDirectories::with_prefix(env!("CARGO_PKG_NAME"));
     setup_logging(&base_dirs, log::LevelFilter::Info)?;
 
     let parent_process_info = fetch_parent_process_info();
