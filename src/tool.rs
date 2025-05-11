@@ -7,6 +7,7 @@ use nix::unistd::Pid;
 use regex::Captures;
 
 use crate::prelude::*;
+use std::process::Child;
 
 fn get_root_dir(filename: &str, workspace: &Workspace, root_markers: &[String]) -> Result<String> {
     let starting_path = std::path::PathBuf::from(filename);
@@ -76,11 +77,40 @@ pub fn run_linter(
         (cmd, root_dir)
     };
     log::info!("spawning {cmd:?}...");
-    let mut child = cmd.spawn()?;
+    let mut child: Child = cmd.spawn()?;
+    let child_pid = run_linter_core(
+        diagnostics_manager,
+        linter_config,
+        max_linter_count,
+        file_content,
+        uri,
+        version,
+        root_dir,
+        &mut child,
+    );
+    let _ = child
+        .wait()
+        .inspect_err(|e| panic!("Failed to wait for child process: {child:?}: {e}"));
+    child_pid
+}
 
-    let mut stdin: std::process::ChildStdin = child.stdin.take().expect("Failed to open stdin");
-
+fn run_linter_core(
+    diagnostics_manager: &mut DiagnosticsManager,
+    linter_config: PicklsLinterConfig,
+    max_linter_count: usize,
+    file_content: Option<String>,
+    uri: Uri,
+    version: DocumentVersion,
+    root_dir: String,
+    child: &mut Child,
+) -> Result<Pid> {
+    log::info!(
+        "{program} PID={pid}",
+        program = linter_config.program,
+        pid = child.id()
+    );
     if linter_config.use_stdin {
+        let mut stdin: std::process::ChildStdin = child.stdin.take().expect("Failed to open stdin");
         if let Some(file_content) = file_content {
             log::info!(
                 "writing to `{program}`'s stdin: '{preamble}...'",
@@ -90,12 +120,9 @@ pub fn run_linter(
             );
             stdin.write_all(file_content.as_bytes())?;
         }
+        drop(stdin);
     }
-    drop(stdin);
-
-    let program = linter_config.program.clone();
     let child_pid = Pid::from_raw(child.id() as i32);
-    // TODO: maybe box these to enable vtbl-style polymorphism here.
     if let Err(error) = if linter_config.use_stderr {
         ingest_linter_errors(
             uri,
@@ -103,7 +130,7 @@ pub fn run_linter(
             diagnostics_manager,
             &root_dir,
             max_linter_count,
-            linter_config,
+            &linter_config,
             BufReader::new(child.stderr.take().expect("Failed to take stderr")),
         )
     } else {
@@ -113,7 +140,7 @@ pub fn run_linter(
             diagnostics_manager,
             &root_dir,
             max_linter_count,
-            linter_config,
+            &linter_config,
             BufReader::new(child.stdout.take().expect("Failed to take stdout")),
         )
     } {
@@ -124,10 +151,16 @@ pub fn run_linter(
         .inspect(|status| {
             log::info!(
                 "linter program '{program}' exited with status: {status:?} [pid={pid}]",
+                program = linter_config.program,
                 pid = child_pid,
             );
         })
-        .inspect_err(|err| log::warn!("linter program '{program}' error: {err}",))?;
+        .inspect_err(|err| {
+            log::warn!(
+                "linter program '{program}' error: {err}",
+                program = linter_config.program,
+            )
+        })?;
     Ok(child_pid)
 }
 
@@ -205,7 +238,7 @@ fn ingest_linter_errors(
     diagnostics_manager: &mut DiagnosticsManager,
     root_dir: &str,
     max_linter_count: usize,
-    linter_config: PicklsLinterConfig,
+    linter_config: &PicklsLinterConfig,
     child_stdout: BufReader<impl Read>,
 ) -> Result<()> {
     let re = Regex::new(&linter_config.pattern).map_err(|e| {
@@ -231,12 +264,9 @@ fn ingest_linter_errors(
         // log::info!("line: {line}");
         if let Some(caps) = re.captures(&line) {
             log::trace!("caps: {caps:?}");
-            if let Some(lsp_diagnostic) = convert_capture_to_diagnostic(
-                uri.path().as_str(),
-                &linter_config,
-                caps,
-                &prior_line,
-            ) {
+            if let Some(lsp_diagnostic) =
+                convert_capture_to_diagnostic(uri.path().as_str(), linter_config, caps, &prior_line)
+            {
                 // log::info!("diagnostic: {lsp_diagnostic:?}");
                 let mut path = std::path::PathBuf::from(lsp_diagnostic.filename.clone());
                 if path.is_relative() {
