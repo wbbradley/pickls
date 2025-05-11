@@ -164,7 +164,7 @@ languages:
           - --stdin-filename
           - $filename
     linters:
-      # Try out [dmypyls](https://github.com/wbbradly/dmypyls).
+      # Try out [dmypyls](https://github.com/wbbradley/dmypyls).
       - program: mypy
         args:
           - --show-column-numbers
