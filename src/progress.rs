@@ -32,7 +32,7 @@ impl ProgressNotifier {
         );
         let r = self.client.send_notification::<Progress, _>(progress);
         if let Err(e) = r {
-            log::error!("error sending progress notification: {:?}", e);
+            log::error!("error sending progress notification: {e:?}");
         }
     }
 }

@@ -39,7 +39,7 @@ impl Workspace {
             .into_iter()
             .inspect(|res| {
                 if let Err(e) = res {
-                    log::error!("Failed to list files in git repository: {}", e);
+                    log::error!("Failed to list files in git repository: {e}");
                 }
             })
             .flatten()

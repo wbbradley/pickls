@@ -1,5 +1,6 @@
-use libc::strerror;
 use std::ffi::CStr;
+
+use libc::strerror;
 
 #[allow(dead_code)]
 #[cfg(target_os = "linux")]
@@ -68,7 +69,7 @@ impl Errno {
 impl std::fmt::Display for Errno {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s: String = (*self).into();
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 

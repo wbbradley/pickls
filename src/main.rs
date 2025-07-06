@@ -1,8 +1,9 @@
 // src/main.rs
 #![allow(clippy::too_many_arguments)]
 
-use crate::prelude::*;
 use std::rc::Rc;
+
+use crate::prelude::*;
 
 #[macro_use]
 extern crate serde_json;
@@ -256,7 +257,7 @@ impl PicklsBackend {
             .context("getting api_key_cmd output")?;
         let mut openai_answer =
             fetch_openai_completion(api_key, model.clone(), system_prompt, prompt).await?;
-        log::info!("openai_answer: {:?}", openai_answer);
+        log::info!("openai_answer: {openai_answer:?}");
         Ok(InlineAssistResponse {
             provider: "OpenAI".to_string(),
             model,
@@ -272,7 +273,7 @@ impl PicklsBackend {
         let api_address = self.config.ai.ollama.api_address.clone();
         let ollama_answer =
             fetch_ollama_completion(api_address, model.clone(), system_prompt, prompt).await?;
-        log::info!("ollama_answer: {:?}", ollama_answer);
+        log::info!("ollama_answer: {ollama_answer:?}");
         Ok(InlineAssistResponse {
             provider: "Ollama".to_string(),
             model,
@@ -374,7 +375,7 @@ impl LanguageServer for PicklsBackend {
         let range: Range = params.range;
         let file_contents = file_contents.as_ref();
         let text = slice_range(file_contents, range);
-        log::trace!("Got a selection: {text} [range={range:#?}]", range = range);
+        log::trace!("Got a selection: {text} [range={range:#?}]");
         if text.is_empty() {
             log::info!("No selection found, returning early");
             return Ok(None);
@@ -465,7 +466,7 @@ impl LanguageServer for PicklsBackend {
         let language_config = match self.fetch_language_config(&language_id) {
             Some(config) => config,
             None => {
-                log::info!("No language config found for language ID {:?}", language_id);
+                log::info!("No language config found for language ID {language_id:?}");
                 return Ok(None);
             }
         };
@@ -690,7 +691,7 @@ fn update_configuration(
         }
         Err(error) => {
             let message = format!("invalid pickls configuration [{error}]");
-            log::warn!("{}", message);
+            log::warn!("{message}");
             client.log_message(MessageType::WARNING, message)?;
         }
     }
@@ -703,25 +704,20 @@ fn setup_logging(base_dirs: &xdg::BaseDirectories, level: log::LevelFilter) -> R
     Ok(())
 }
 
-fn read_config(base_dirs: &xdg::BaseDirectories) -> Option<PicklsConfig> {
-    let config_filename = base_dirs.get_config_file(format!("{}.yaml", env!("CARGO_PKG_NAME")))?;
+fn read_config(base_dirs: &xdg::BaseDirectories) -> Result<PicklsConfig> {
+    let pickls_yaml = format!("{}.yaml", env!("CARGO_PKG_NAME"));
+    let config_filename = base_dirs
+        .get_config_file(&pickls_yaml)
+        .ok_or(Error::new(format!(
+            "could not locate configuration file '{pickls_yaml}'"
+        )))?;
     log::info!("attempting to read configuration from {config_filename:?}");
-    let config = parse_config(
+    parse_config(
         read_to_string(config_filename)
-            .ok_or_log("failed to read configuration")?
+            .context("failed to read configuration")?
             .as_str(),
     )
-    .context("failed to parse YAML configuration")
-    .ok_or_log("failed to parse configuration");
-    log::info!(
-        "configuration {}read.",
-        if config.is_some() {
-            "successfully "
-        } else {
-            "could not be "
-        }
-    );
-    config
+    .context("failed to parse configuration")
 }
 
 pub fn parse_config(content: &str) -> Result<PicklsConfig> {
@@ -729,9 +725,12 @@ pub fn parse_config(content: &str) -> Result<PicklsConfig> {
 }
 
 fn main() -> Result<()> {
-    if std::env::args().nth(1) == Some("version".to_string()) {
-        println!("{}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
+    match std::env::args().nth(1).as_deref() {
+        Some("version") | Some("-v") | Some("-V") | Some("--version") => {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        _ => {}
     }
 
     let base_dirs = xdg::BaseDirectories::with_prefix(env!("CARGO_PKG_NAME"));
@@ -742,7 +741,7 @@ fn main() -> Result<()> {
         "pickls started; pid={pid}; parent_process_info={parent_process_info}",
         pid = nix::unistd::getpid()
     );
-    let config = read_config(&base_dirs).unwrap();
+    let config = read_config(&base_dirs).context("failed to read configuration")?;
     let rt = Runtime::new().context("creating tokio runtime")?;
     // Initialize the configuration's site name.
     run_server(|client| PicklsBackend::new(client, rt, config))

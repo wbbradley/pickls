@@ -193,16 +193,16 @@ impl<R: BufRead> Iterator for ParseJsonRpc<R> {
                 .parse::<u32>()
                 .ok()?;
 
-            log::trace!("Got Content-Length: {:?}", content_length);
+            log::trace!("Got Content-Length: {content_length:?}");
             content_length
         } else {
-            log::error!("Expected Content-Length, got {:?}", buf);
+            log::error!("Expected Content-Length, got {buf:?}");
             return None;
         };
         let mut crlf = [0u8; 2];
         self.reader.read_exact(&mut crlf).ok()?;
         if crlf != [13, 10] {
-            log::error!("Expected CRLF, got {:?}", crlf);
+            log::error!("Expected CRLF, got {crlf:?}");
             panic!()
         }
         let mut buf = vec![0; content_length as usize];

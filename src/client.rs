@@ -1,6 +1,7 @@
 #![allow(unused)]
-use crate::prelude::*;
 use std::io::Write;
+
+use crate::prelude::*;
 
 #[derive(Clone)]
 pub struct Client {
@@ -90,7 +91,7 @@ impl Client {
             }
             Err(error) => {
                 let id = id.unwrap_or(MessageId::Number(0));
-                log::warn!("Sending error response: {}", error);
+                log::warn!("Sending error response: {error}");
                 let response_text =
                     serde_json::to_string(&JsonRpcResponse::error(id, error)).unwrap();
                 let mut w = self.stdout.borrow_mut();
