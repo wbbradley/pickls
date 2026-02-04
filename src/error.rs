@@ -1,5 +1,6 @@
-use handlebars::RenderError;
 use std::{num::ParseIntError, panic::Location};
+
+use handlebars::RenderError;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -38,7 +39,10 @@ impl<T, E: std::fmt::Debug> Context<T> for std::result::Result<T, E> {
     #[track_caller]
     #[inline]
     fn context(self, context: &str) -> Result<T> {
-        self.map_err(|e| Error::new(format!("{context}: {e:?}")))
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(Error::new(format!("{context}: {error:?}"))),
+        }
     }
 }
 

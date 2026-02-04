@@ -1,13 +1,13 @@
 use std::{
     io::{BufRead, BufReader, Read, Write},
     os::unix::process::CommandExt as _,
+    process::Child,
 };
 
 use nix::unistd::Pid;
 use regex::Captures;
 
 use crate::prelude::*;
-use std::process::Child;
 
 fn get_root_dir(filename: &str, workspace: &Workspace, root_markers: &[String]) -> Result<String> {
     let starting_path = std::path::PathBuf::from(filename);
@@ -77,7 +77,7 @@ pub fn run_linter(
         (cmd, root_dir)
     };
     log::info!("spawning {cmd:?}...");
-    let mut child: Child = cmd.spawn()?;
+    let mut child: Child = cmd.spawn().with_context(|| "")?;
     let child_pid = run_linter_core(
         diagnostics_manager,
         linter_config,
