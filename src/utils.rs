@@ -1,27 +1,25 @@
 use std::{path::Path, process};
 
+use anyhow::{Context, Result};
 use handlebars::Handlebars;
 use lsp_types::Range;
 use serde::Serialize;
 pub use sysinfo::{Pid, System};
-
-use crate::error::{Context as _, Error, Result};
 
 pub fn fetch_parent_process_info() -> String {
     let mut system = System::new_all();
     system.refresh_all();
 
     let current_pid = process::id();
-    if let Some(current_process) = system.process(Pid::from(current_pid as usize)) {
-        if let Some(parent_pid) = current_process.parent() {
-            if let Some(parent_process) = system.process(parent_pid) {
-                return format!(
-                    "[name={name:?}, user_id={user_id:?}]",
-                    name = parent_process.name().to_string_lossy().into_owned(),
-                    user_id = parent_process.user_id(),
-                );
-            }
-        }
+    if let Some(current_process) = system.process(Pid::from(current_pid as usize))
+        && let Some(parent_pid) = current_process.parent()
+        && let Some(parent_process) = system.process(parent_pid)
+    {
+        return format!(
+            "[name={name:?}, user_id={user_id:?}]",
+            name = parent_process.name().to_string_lossy().into_owned(),
+            user_id = parent_process.user_id(),
+        );
     }
     "<unknown parent process>".to_string()
 }
@@ -118,10 +116,10 @@ pub async fn get_command_output(cmd: Vec<String>) -> Result<String> {
         .await
         .context("Failed to run command")?;
     if !output.status.success() {
-        return Err(Error::new(format!(
-            "Command failed with status: {status:?}",
+        anyhow::bail!(
+            "command failed with status: {status:?}",
             status = output.status
-        )));
+        );
     }
     String::from_utf8(output.stdout).context("Failed to read stdout as utf-8")
 }

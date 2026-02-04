@@ -1,7 +1,11 @@
-use crate::prelude::*;
+use std::{
+    io::{BufRead, BufReader},
+    str::FromStr,
+};
+
 use regex::Regex;
-use std::io::{BufRead, BufReader};
-use std::str::FromStr;
+
+use crate::prelude::*;
 
 const MAX_CTAGS_SYMBOLS: usize = 10_000_000;
 
@@ -62,7 +66,7 @@ pub(crate) fn parse_ctags_output(
     let stdout = BufReader::new(
         proc.stdout
             .take()
-            .ok_or_else(|| Error::new("Failed to capture child process stdout"))?,
+            .context("failed to capture child process stdout")?,
     );
     log::info!("parsing ctags output");
     for line in BufReader::new(stdout).lines() {

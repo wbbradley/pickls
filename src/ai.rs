@@ -1,5 +1,6 @@
-use crate::prelude::*;
 use schemars::JsonSchema;
+
+use crate::prelude::*;
 
 #[derive(Debug, Serialize)]
 pub struct InlineAssistTemplateContext {

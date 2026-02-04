@@ -18,7 +18,6 @@ mod document_diagnostics;
 mod document_storage;
 mod document_version;
 mod errno;
-mod error;
 mod job;
 mod language_server;
 mod prelude;
@@ -97,10 +96,10 @@ impl PicklsBackend {
     fn get_document(&self, uri: &Uri) -> Result<DocumentStorage> {
         match self.document_storage.get(uri).cloned() {
             Some(ds) => Ok(ds),
-            None => Err(Error::new(format!(
-                "No document found for url '{uri}'",
+            None => Err(anyhow::anyhow!(
+                "no document found for url '{uri}'",
                 uri = uri.as_str()
-            ))),
+            )),
         }
     }
 
@@ -115,8 +114,6 @@ impl PicklsBackend {
             );
             return Ok(());
         };
-
-        // Lock the jobs structure while we manipulate it.
 
         let job_id = JobId::from(&job_spec);
         // Get rid of a prior running jobs.
@@ -155,6 +152,7 @@ impl PicklsBackend {
         assert!(self.jobs.insert(job_id, new_jobs).is_none());
         Ok(())
     }
+
     fn fetch_inline_assistance(
         &self,
         language_id: String,
@@ -231,7 +229,7 @@ impl PicklsBackend {
                 .collect::<Vec<_>>();
             let results = join_all(futures).await;
             if results.is_empty() {
-                return Err("All inline assistants failed".into());
+                anyhow::bail!("All inline assistants failed");
             }
             Ok(Some(
                 results
@@ -358,13 +356,13 @@ impl LanguageServer for PicklsBackend {
     fn code_action(&mut self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         log::trace!("Got a textDocument/codeAction request: {params:#?}");
         // Get the text of the document from the document storage.
-        if let Some(filter) = params.context.only {
-            if !filter.contains(&CodeActionKind::new("pickls.inline-assist")) {
-                log::trace!(
-                    "Client is filtering code actions, no pickls.inline-assist found, returning early"
-                );
-                return Ok(None);
-            }
+        if let Some(filter) = params.context.only
+            && !filter.contains(&CodeActionKind::new("pickls.inline-assist"))
+        {
+            log::trace!(
+                "Client is filtering code actions, no pickls.inline-assist found, returning early"
+            );
+            return Ok(None);
         }
         let uri = params.text_document.uri;
         let DocumentStorage {
@@ -411,7 +409,7 @@ impl LanguageServer for PicklsBackend {
             Ok(Some(
                 // Iterate over all of the inline assistants and collect the results.
                 self.fetch_inline_assistance(language_id, text, progress_notifier)?
-                    .ok_or("No inline assistants found")?
+                    .context("no inline assistants found")?
                     .into_iter()
                     .map(|response| {
                         CodeActionOrCommand::CodeAction(CodeAction {
@@ -543,10 +541,10 @@ impl LanguageServer for PicklsBackend {
         if dccp.settings.is_null() {
             return Ok(());
         }
-        if let serde_json::Value::Object(ref map) = dccp.settings {
-            if map.is_empty() {
-                return Ok(());
-            }
+        if let serde_json::Value::Object(ref map) = dccp.settings
+            && map.is_empty()
+        {
+            return Ok(());
         }
         update_configuration(&self.client, &mut self.config, dccp.settings)
     }
@@ -585,7 +583,7 @@ impl LanguageServer for PicklsBackend {
             language_id: params.text_document.language_id,
             text: file_contents,
         })
-        .context("did_open")
+        .context("run_diagnostics")
     }
     fn will_save(&mut self, params: WillSaveTextDocumentParams) -> Result<()> {
         log::info!(
@@ -708,9 +706,7 @@ fn read_config(base_dirs: &xdg::BaseDirectories) -> Result<PicklsConfig> {
     let pickls_yaml = format!("{}.yaml", env!("CARGO_PKG_NAME"));
     let config_filename = base_dirs
         .get_config_file(&pickls_yaml)
-        .ok_or(Error::new(format!(
-            "could not locate configuration file '{pickls_yaml}'"
-        )))?;
+        .with_context(|| format!("could not locate configuration file '{pickls_yaml}'"))?;
     log::info!("attempting to read configuration from {config_filename:?}");
     parse_config(
         read_to_string(config_filename)
@@ -744,5 +740,7 @@ fn main() -> Result<()> {
     let config = read_config(&base_dirs).context("failed to read configuration")?;
     let rt = Runtime::new().context("creating tokio runtime")?;
     // Initialize the configuration's site name.
-    run_server(|client| PicklsBackend::new(client, rt, config))
+    run_server(|client| PicklsBackend::new(client, rt, config)).inspect_err(|e| {
+        log::error!("pickls server exited with error: {e:?}");
+    })
 }

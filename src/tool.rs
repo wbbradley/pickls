@@ -26,15 +26,15 @@ fn get_root_dir(filename: &str, workspace: &Workspace, root_markers: &[String]) 
                     .iter()
                     .any(|marker| path_buf.join(marker).exists())
             {
-                return Ok(path_buf.to_str().ok_or("invalid root dir")?.to_string());
+                return Ok(path_buf.to_str().context("invalid root dir")?.to_string());
             }
         }
     }
     let basedir = starting_path
         .parent()
-        .ok_or("path has no basedir")?
+        .context("path has no basedir")?
         .to_str()
-        .ok_or("invalid basedir path")?
+        .context("invalid basedir path")?
         .to_string();
     log::info!("no root directory found for file {filename}, using {basedir}");
     Ok(basedir)
@@ -77,7 +77,7 @@ pub fn run_linter(
         (cmd, root_dir)
     };
     log::info!("spawning {cmd:?}...");
-    let mut child: Child = cmd.spawn().with_context(|| "")?;
+    let mut child: Child = cmd.spawn().with_context(|| format!("spawning ({cmd:?})"))?;
     let child_pid = run_linter_core(
         diagnostics_manager,
         linter_config,
@@ -241,9 +241,9 @@ fn ingest_linter_errors(
     linter_config: &PicklsLinterConfig,
     child_stdout: BufReader<impl Read>,
 ) -> Result<()> {
-    let re = Regex::new(&linter_config.pattern).map_err(|e| {
+    let re = Regex::new(&linter_config.pattern).with_context(|| {
         format!(
-            "Invalid regex [pattern={pattern}, error={e}]",
+            "invalid regex [pattern={pattern}]",
             pattern = linter_config.pattern
         )
     })?;
@@ -295,7 +295,7 @@ fn ingest_linter_errors(
     );
 
     // TODO: track errors from other documents. For now this is out of reach
-    // beacuse we don't have the current version of the other document
+    // because we don't have the current version of the other document
     // readily available.
     diagnostics_manager.update_diagnostics(
         uri.clone(),
@@ -358,22 +358,22 @@ pub fn run_formatter(
             if formatter_config.stderr_indicates_error && stderr_len != 0 {
                 // Writing anything to stderr is considered a formatting failure.
                 log::error!(
-                    "Failed to format file {uri}: {error_text}",
+                    "failed to format file {uri}: {error_text}",
                     uri = uri.as_str()
                 );
-                return Err(Error::new("Failed to format file"));
+                anyhow::bail!("failed to format file {uri:?}", uri = uri.as_str());
             }
         }
         (Err(err), Err(err2)) => {
             log::error!(
-                "Failed to format file {uri}: {err} & {err2}",
+                "failed to format file {uri}: {err} & {err2}",
                 uri = uri.as_str()
             );
-            return Err(Error::new("Failed to format file"));
+            anyhow::bail!("failed to format file {uri:?}", uri = uri.as_str());
         }
         (Err(err), _) | (_, Err(err)) => {
-            log::error!("Failed to format file {uri}: {err}", uri = uri.as_str());
-            return Err(Error::new("Failed to format file"));
+            log::error!("failed to format file {uri}: {err}", uri = uri.as_str());
+            anyhow::bail!("failed to format file {uri:?}", uri = uri.as_str());
         }
     };
 
@@ -382,6 +382,6 @@ pub fn run_formatter(
         Ok(formatted_content)
     } else {
         log::error!("Failed to format file {uri}", uri = uri.as_str());
-        Err(Error::new("Failed to format file"))
+        anyhow::bail!("failed to format file {uri:?}", uri = uri.as_str());
     }
 }

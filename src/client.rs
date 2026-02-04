@@ -72,10 +72,7 @@ impl Client {
         match result {
             Ok(result) => {
                 let Some(id) = id else {
-                    return Err(Error::new(format!(
-                        "missing id for response ({})",
-                        std::any::type_name::<T>()
-                    )));
+                    anyhow::bail!("missing id for response ({})", std::any::type_name::<T>());
                 };
                 let response_text =
                     serde_json::to_string(&JsonRpcResponse::response(id, result)).unwrap();

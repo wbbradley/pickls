@@ -1,5 +1,6 @@
-use serde::Deserialize;
 use std::collections::HashMap;
+
+use serde::Deserialize;
 
 const DEFAULT_CTAGS_TIMEOUT_MS: u64 = 500;
 

@@ -50,17 +50,6 @@ pub struct Errno {
 }
 
 impl Errno {
-    pub fn latest() -> Self {
-        Self {
-            errno: errors::get_errno(),
-        }
-    }
-    pub fn is_enoent(self) -> bool {
-        self.errno == libc::ENOENT
-    }
-    pub fn is_eagain(self) -> bool {
-        self.errno == libc::EAGAIN
-    }
     pub fn is_error(self) -> bool {
         self.errno != 0
     }

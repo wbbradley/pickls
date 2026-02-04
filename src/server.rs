@@ -25,7 +25,7 @@ where
             Initialized::METHOD => {
                 backend
                     .initialized(rpc.take_params()?)
-                    .ok_or_log("Error in initialized");
+                    .context("error in initialized")?;
             }
             SetTrace::METHOD => {
                 backend.set_trace(rpc.take_params()?);
@@ -42,27 +42,27 @@ where
             DidChangeTextDocument::METHOD => {
                 backend
                     .did_change(rpc.take_params()?)
-                    .ok_or_log("Error in did_change");
+                    .context("error in did_change")?;
             }
             DidChangeConfiguration::METHOD => {
                 backend
                     .did_change_configuration(rpc.take_params()?)
-                    .ok_or_log("Error in did_change_configuration");
+                    .context("error in did_change_configuration")?;
             }
             DidOpenTextDocument::METHOD => {
                 backend
                     .did_open(rpc.take_params()?)
-                    .ok_or_log("Error in did_open");
+                    .context("error in did_open")?;
             }
             DidCloseTextDocument::METHOD => {
                 backend
                     .did_close(rpc.take_params()?)
-                    .ok_or_log("Error in did_close");
+                    .context("error in did_close")?;
             }
             WillSaveTextDocument::METHOD => {
                 backend
                     .will_save(rpc.take_params()?)
-                    .ok_or_log("Error in will_save");
+                    .context("error in will_save")?;
             }
             Formatting::METHOD => {
                 client.write_response(id, backend.formatting(rpc.take_params()?))?;

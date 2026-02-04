@@ -145,7 +145,7 @@ impl<T: Serialize> JsonRpcResponse<T> {
 }
 
 impl JsonRpcResponse<()> {
-    pub fn error(id: MessageId, error: Error) -> Self {
+    pub fn error(id: MessageId, error: anyhow::Error) -> Self {
         Self {
             jsonrpc: "2.0",
             id,
