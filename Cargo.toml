@@ -1,6 +1,6 @@
 [package]
 name = "pickls"
-version = "0.6.18"
+version = "0.7.0"
 edition = "2024"
 license = "MIT"
 keywords = ["LSP", "protocol", "command-line", "ide", "diagnostics"]
@@ -33,3 +33,4 @@ allms = "0.33"
 anyhow = "1.0.93"
 schemars = "1.2"
 futures = "0.3.31"
+strip-ansi-escapes = "0.2.1"

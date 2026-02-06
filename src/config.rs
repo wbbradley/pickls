@@ -34,14 +34,6 @@ pub enum PicklsSymbolsSource {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct PicklsLanguageConfig {
-    /// A list of pathnames that indicate the root directory in relation to a file
-    /// being processed. pickls will use the first directory containing one of
-    /// these files as the root directory. The associated linter or formatter
-    /// will be run with its working directory set to this directory. (ie: pyproject.toml,
-    /// setup.py, Cargo.toml, go.mod, Makefile, etc...)
-    #[serde(default)]
-    pub root_markers: Vec<String>,
-
     /// All the linters you'd like to run on this language. Each linter runs in
     /// a subprocess group.
     #[serde(default)]
@@ -53,10 +45,23 @@ pub struct PicklsLanguageConfig {
     /// have chained pipes from stdout to stdin to eliminate extra copies.
     #[serde(default)]
     pub formatters: Vec<PicklsFormatterConfig>,
+
+    /// Default root markers that will be inherited by linters and formatters if they
+    /// don't specify their own. (ie: pyproject.toml, setup.py, Cargo.toml, go.mod,
+    /// Makefile, etc...)
+    #[serde(default)]
+    pub root_markers: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct PicklsLinterConfig {
+    /// A list of pathnames that indicate the root directory in relation to a file
+    /// being processed. pickls will use the first directory containing one of
+    /// these files as the root directory. The associated linter will be run with its working
+    /// directory set to this directory. If not specified, inherits from the language config.
+    /// Set to an empty list [] to explicitly disable root markers for this linter.
+    /// (ie: pyproject.toml, setup.py, Cargo.toml, go.mod, Makefile, etc...)
+    pub root_markers: Option<Vec<String>>,
     /// If `program` is not an absolute path, the `PATH` will be searched in an OS-defined way.
     pub program: String,
     /// Arguments to pass to `program`. Use "$filename" wherever the absolute path to the real filename should go.
@@ -100,9 +105,17 @@ fn default_true() -> bool {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct PicklsFormatterConfig {
+    /// A list of pathnames that indicate the root directory in relation to a file
+    /// being processed. pickls will use the first directory containing one of
+    /// these files as the root directory. The associated formatter will be run with its working
+    /// directory set to this directory. If not specified, inherits from the language config.
+    /// Set to an empty list [] to explicitly disable root markers for this formatter.
+    /// (ie: pyproject.toml, setup.py, Cargo.toml, go.mod, Makefile, etc...)
+    pub root_markers: Option<Vec<String>>,
     /// If `program` is not an absolute path, the `PATH` will be searched in an OS-defined way.
     pub program: String,
-    /// Arguments to pass to `program`. Use "$abspath" wherever the absolute path to the filename should go.
+    /// Arguments to pass to `program`. Use "$filename" wherever the absolute path to the filename should go.
+    #[serde(default = "Vec::new")]
     pub args: Vec<String>,
     /// Whether to use stdin to push the contents of the file to `program` or to rely on the usage
     /// of "$filename" arg. Defaults to true.

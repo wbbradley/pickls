@@ -10,7 +10,15 @@ use regex::Captures;
 use crate::prelude::*;
 
 fn get_root_dir(filename: &str, workspace: &Workspace, root_markers: &[String]) -> Result<String> {
-    let starting_path = std::path::PathBuf::from(filename);
+    let starting_path = match std::path::PathBuf::from(filename).canonicalize() {
+        Ok(path) => path,
+        Err(_) => {
+            // Fallback to using an absolute path if canonicalization fails. It may fail if the
+            // file temporarily doesn't exist due to unlink + move operations that some editors
+            // (ie: neovim) perform.
+            std::path::absolute(filename)?
+        }
+    };
     if !root_markers.is_empty() {
         let mut path = starting_path.as_path();
         log::info!("path = {path:?}");
@@ -26,6 +34,7 @@ fn get_root_dir(filename: &str, workspace: &Workspace, root_markers: &[String]) 
                     .iter()
                     .any(|marker| path_buf.join(marker).exists())
             {
+                log::debug!("found root directory {path_buf:?} for file {filename}");
                 return Ok(path_buf.to_str().context("invalid root dir")?.to_string());
             }
         }
@@ -44,11 +53,11 @@ pub fn run_linter(
     diagnostics_manager: &mut DiagnosticsManager,
     linter_config: PicklsLinterConfig,
     workspace: &Workspace,
-    root_markers: &[String],
     max_linter_count: usize,
     file_content: Option<String>,
     uri: Uri,
     version: DocumentVersion,
+    language_root_markers: &[String],
 ) -> Result<Pid> {
     let (mut cmd, root_dir) = {
         let filename = uri.path().as_str();
@@ -57,8 +66,33 @@ pub fn run_linter(
         let mut args = linter_config.args.clone();
         for arg in args.iter_mut() {
             *arg = arg.replace("$filename", filename);
+            log::trace!("arg after $filename replacement: {arg}");
+            // If the user specifies "$root(some_filename)" in the args, then replace it with
+            // the root directory determined by searching for root markers.
+            if let Some(start) = arg.find("$root(") {
+                if let Some(end) = arg[start..].find(')') {
+                    let marker_filename = &arg[start + 6..start + end];
+                    match get_root_dir(filename, workspace, &[marker_filename.to_string()]) {
+                        Ok(root_dir) => {
+                            log::debug!(
+                                "found root marker {marker_filename} near {filename}: {root_dir}"
+                            );
+                            *arg = arg.replace(&format!("$root({})", marker_filename), &root_dir);
+                        }
+                        Err(e) => log::warn!(
+                            "Could not find root marker {marker_filename} near {filename}: {e:?}"
+                        ),
+                    }
+                } else {
+                    log::warn!("unmatched $root( in arg: {arg}");
+                }
+            }
         }
-        let root_dir: String = get_root_dir(filename, workspace, root_markers)?;
+        // Resolve effective root markers: use linter-specific if provided, otherwise inherit from language
+        let effective_root_markers = linter_config
+            .root_markers.as_deref()
+            .unwrap_or(language_root_markers);
+        let root_dir: String = get_root_dir(filename, workspace, effective_root_markers)?;
         log::info!(
             "running linter {program} with root_dir={root_dir}",
             program = linter_config.program
@@ -221,6 +255,10 @@ fn convert_capture_to_diagnostic(
             severity: caps.get(i)?.as_str().to_string(),
         })
     });
+    log::debug!(
+        "captured diagnostic: filename={filename}, line={line}, start_column={start_column:?}, end_column={end_column:?}, severity={severity:?}, description={description:?} cwd={}",
+        std::env::current_dir().unwrap().display()
+    );
     Some(PicklsDiagnostic {
         linter: linter_config.program.clone(),
         filename,
@@ -260,8 +298,9 @@ fn ingest_linter_errors(
         }
     };
     for line in child_stdout.lines() {
-        let line = line?;
-        // log::info!("line: {line}");
+        let line =
+            String::from_utf8_lossy(&strip_ansi_escapes::strip(line?.as_bytes())).to_string();
+        log::debug!("line: {line}");
         if let Some(caps) = re.captures(&line) {
             log::trace!("caps: {caps:?}");
             if let Some(lsp_diagnostic) =
@@ -272,19 +311,34 @@ fn ingest_linter_errors(
                 if path.is_relative() {
                     path = root_dir.join(path);
                 }
-                let realpath_for_diagnostic = path.canonicalize()?;
-                if realpath_for_uri == realpath_for_diagnostic {
-                    // Note that this filtering can be avoided in cases that the linter is known to
-                    // only lint in the current file. This is intended to filter out diagnostics
-                    // from linters that scan multiple files.
-                    lsp_diagnostics.push(lsp_diagnostic.into());
-                } else {
-                    log::warn!(
-                        "ignoring diagnostic for {uri} because it is not in the current document [filename={realpath_for_diagnostic:?}]",
-                        uri = uri.as_str(),
-                    );
+                match path.canonicalize() {
+                    Ok(realpath_for_diagnostic) => {
+                        if realpath_for_uri == realpath_for_diagnostic {
+                            // Note that this filtering can be avoided in cases that the linter is known to
+                            // only lint in the current file. This is intended to filter out diagnostics
+                            // from linters that scan multiple files.
+                            lsp_diagnostics.push(lsp_diagnostic.into());
+                        } else {
+                            log::warn!(
+                                "ignoring diagnostic for {uri} because it is not in the current document [filename={realpath_for_diagnostic:?}]",
+                                uri = uri.as_str(),
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "could not canonicalize path {path:?} for diagnostic: {e} cwd={} root_dir={}",
+                            std::env::current_dir()?.display(),
+                            root_dir.display()
+                        );
+                    }
                 }
             }
+        } else {
+            log::trace!(
+                "line did not match linter pattern [pattern={pattern}]",
+                pattern = linter_config.pattern
+            );
         }
         prior_line = Some(line);
     }
@@ -310,9 +364,9 @@ fn ingest_linter_errors(
 pub fn run_formatter(
     formatter_config: &PicklsFormatterConfig,
     workspace: &Workspace,
-    root_markers: &[String],
     file_content: String,
     uri: Uri,
+    language_root_markers: &[String],
 ) -> Result<String> {
     let mut cmd = {
         let filename = uri.path().as_str();
@@ -322,7 +376,11 @@ pub fn run_formatter(
         for arg in args.iter_mut() {
             *arg = arg.replace("$filename", filename);
         }
-        let root_dir: String = get_root_dir(filename, workspace, root_markers)?;
+        // Resolve effective root markers: use formatter-specific if provided, otherwise inherit from language
+        let effective_root_markers = formatter_config
+            .root_markers.as_deref()
+            .unwrap_or(language_root_markers);
+        let root_dir: String = get_root_dir(filename, workspace, effective_root_markers)?;
         log::info!(
             "running formatter {program} with root_dir={root_dir}",
             program = formatter_config.program

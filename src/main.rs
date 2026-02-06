@@ -138,11 +138,11 @@ impl PicklsBackend {
                 &mut self.diagnostics_manager,
                 linter_config,
                 &self.workspace,
-                &language_config.root_markers,
                 max_linter_count,
                 file_content,
                 job_spec.uri.clone(),
                 job_spec.version,
+                &language_config.root_markers,
             )?;
             debug_assert!(!self.jobs.contains_key(&job_id));
             new_jobs.push(Job { pid });
@@ -470,7 +470,7 @@ impl LanguageServer for PicklsBackend {
         };
 
         // The big edit to return.
-        log::info!(
+        log::warn!(
             "Formatting file '{uri}' with {count} formatters",
             uri = uri.as_str(),
             count = language_config.formatters.len()
@@ -480,9 +480,9 @@ impl LanguageServer for PicklsBackend {
             file_contents = match run_formatter(
                 formatter_config,
                 &self.workspace,
-                &language_config.root_markers,
                 file_contents.clone(),
                 uri.clone(),
+                &language_config.root_markers,
             )
             .inspect(|formatted_content| {
                 log::info!(

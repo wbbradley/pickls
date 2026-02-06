@@ -13,6 +13,7 @@ mkdir -p "$(dirname "$logfile")" || die "failed to mkdir"
 echo "$0: invoked! [pickls$(printf " '%s'" "$@")]" >>"$logfile"
 
 export RUST_BACKTRACE=1
+export RUST_LOG=debug
 on_exit() {
   echo "$0: exited!" >>"$logfile"
 }
