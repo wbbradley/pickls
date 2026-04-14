@@ -90,7 +90,8 @@ pub fn run_linter(
         }
         // Resolve effective root markers: use linter-specific if provided, otherwise inherit from language
         let effective_root_markers = linter_config
-            .root_markers.as_deref()
+            .root_markers
+            .as_deref()
             .unwrap_or(language_root_markers);
         let root_dir: String = get_root_dir(filename, workspace, effective_root_markers)?;
         log::info!(
@@ -378,7 +379,8 @@ pub fn run_formatter(
         }
         // Resolve effective root markers: use formatter-specific if provided, otherwise inherit from language
         let effective_root_markers = formatter_config
-            .root_markers.as_deref()
+            .root_markers
+            .as_deref()
             .unwrap_or(language_root_markers);
         let root_dir: String = get_root_dir(filename, workspace, effective_root_markers)?;
         log::info!(
